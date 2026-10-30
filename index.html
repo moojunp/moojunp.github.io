@@ -98,6 +98,7 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
         <button data-z="out" title="축소 (−)">−</button>
         <button data-z="in" title="확대 (+)">+</button>
         <button data-z="reset" title="원래 창으로 (더블클릭)">⤢</button>
+        <button data-z="live" title="최신 값으로 (따라가기)">⏭</button>
       </div>
     </div>
     <div class="lg">
@@ -119,6 +120,7 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
         <button data-z="out" title="축소 (−)">−</button>
         <button data-z="in" title="확대 (+)">+</button>
         <button data-z="reset" title="원래 창으로 (더블클릭)">⤢</button>
+        <button data-z="live" title="최신 값으로 (따라가기)">⏭</button>
       </div>
     </div>
     <div class="lg">
@@ -141,6 +143,7 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
         <button data-z="out" title="축소 (−)">−</button>
         <button data-z="in" title="확대 (+)">+</button>
         <button data-z="reset" title="원래 창으로 (더블클릭)">⤢</button>
+        <button data-z="live" title="최신 값으로 (따라가기)">⏭</button>
       </div>
     </div>
     <canvas class="cv" id="cvP" height="104"></canvas>
@@ -158,6 +161,7 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
         <button data-z="out" title="축소 (−)">−</button>
         <button data-z="in" title="확대 (+)">+</button>
         <button data-z="reset" title="원래 창으로 (더블클릭)">⤢</button>
+        <button data-z="live" title="최신 값으로 (따라가기)">⏭</button>
       </div>
     </div>
     <div class="q" id="qRow"></div>
@@ -190,8 +194,9 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
 var KOSPI_URL = "https://kospi200-live-primary.vicious130510.chatgpt.site/api/live";
 var ENDPOINT_URL = "https://moojunp.github.io/futures-dashboard/endpoint.json";
 var KOSPI_MS = 20000;
-var QUOTE_MS = 15000;
-var CHART_MS = 60000;
+var QUOTE_MS = 5000;
+var TICK_MS = 5000;
+var CHART_MS = 30000;
 var WINS = [[10,"10분"],[30,"30분"],[60,"1시간"],[180,"3시간"],[0,"전체"]];
 var MODES = [["line","선"],["candle","봉"]];
 var FUT_SYMS = [["ES=F","ES"],["NQ=F","NQ"],["YM=F","YM"],["VIX=F","VX"]];
@@ -200,11 +205,11 @@ var MIN_SPAN = 20000;   // 확대 하한 20초
 
 var S = {
   kospi: { snap: null, route: 0, at: 0, err: "" },
-  fut: { base: "", sym: "ES=F", iv: "1", quote: null, chart: null, at: 0, err: "" },
+  fut: { base: "", sym: "ES=F", iv: "1", quote: null, chart: null, ticks: [], res: null, at: 0, err: "" },
   ch: {}   // 캔버스별 상태: {span, view:{t0,t1}|null, mode:'line'|'candle'}
 };
 
-var T = { kospi: 0, quote: 0, chart: 0 };
+var T = { kospi: 0, quote: 0, chart: 0, tick: 0 };
 
 /* ---------- 작은 도구 ---------- */
 function $(s){ return document.querySelector(s); }
@@ -241,8 +246,12 @@ function niceStep(raw){
 /* ---------- 차트 상태 ---------- */
 function chState(key, defSpan){
   var st = S.ch[key];
-  if (!st) st = S.ch[key] = { span: defSpan==null?0:defSpan, view: null, mode: "line" };
+  if (!st) st = S.ch[key] = { span: defSpan==null?0:defSpan, view: null, mode: "line", follow: true };
   return st;
+}
+function zoomTag(st){
+  if (!st || !st.view) return "";
+  return " <b style='color:#3d7bfd'>확대</b>" + (st.follow === false ? " <b style='color:#f0a24a'>고정</b>" : "");
 }
 function extents(series){
   var x0=Infinity,x1=-Infinity;
@@ -317,6 +326,11 @@ function draw(cv, spec){
   var st = chState(spec.key);
   var t0, t1;
   var lastT = ext[1];
+  /* 확대 상태에서 "따라가기"면 창 길이를 유지한 채 오른쪽 끝을 최신 점에 붙인다 */
+  if (st.view && st.follow !== false) {
+    var keepW = st.view.t1 - st.view.t0;
+    if (keepW > 0 && lastT > st.view.t1) st.view = { t0: lastT - keepW, t1: lastT };
+  }
   if (st.view) {
     t0 = Math.max(st.view.t0, ext[0]);
     t1 = Math.min(st.view.t1, ext[1]);
@@ -344,7 +358,18 @@ function draw(cv, spec){
       if (hi > y1) y1 = hi;
     }
   }
-  for (var k=0;k<refs.length;k++){ if (refs[k].y<y0) y0=refs[k].y; if (refs[k].y>y1) y1=refs[k].y; }
+  /* 기준선은 보이는 데이터 가까이에 있는 것만 y 범위에 넣는다.
+     멀리 있는 기준선(전일 종가·발행가)까지 범위에 넣으면 확대해도 선이 납작해진다. */
+  var dy0 = y0, dy1 = y1, room = Math.max((dy1-dy0)*0.5, 1e-9);
+  var kept = [];
+  for (var k=0;k<refs.length;k++){
+    var ry0 = refs[k].y;
+    if (ry0 >= dy0 - room && ry0 <= dy1 + room) {
+      kept.push(refs[k]);
+      if (ry0<y0) y0=ry0; if (ry0>y1) y1=ry0;
+    }
+  }
+  refs = kept;
   if (!isFinite(y0) || !isFinite(y1)) { y0 = 0; y1 = 1; }
   if (!(y1>y0)) { y0 -= 1; y1 += 1; }
   var padY = (y1-y0)*0.08; y0 -= padY; y1 += padY;
@@ -519,7 +544,7 @@ function draw(cv, spec){
   }
 
   cv._geo = {
-    key: spec.key, spec: spec, t0:t0, t1:t1, y0:y0, y1:y1,
+    key: spec.key, spec: spec, t0:t0, t1:t1, y0:y0, y1:y1, ext1: lastT,
     padL:padL, padT:padT, iw:iw, ih:ih, W:W, H:H,
     vis: visCache, series: series
   };
@@ -528,17 +553,23 @@ function draw(cv, spec){
 /* ---------- 확대 / 이동 ---------- */
 function redraw(cv){ if (cv._render) cv._render(); }
 
+function nearRight(g, t1, span){
+  if (!g) return true;
+  return (g.ext1 - t1) <= Math.max(3000, span*0.06);
+}
 function zoomAt(cv, factor, frac){
   var g = cv._geo; if (!g) return;
   var st = chState(g.key);
+  var following = st.follow !== false;
   var span = (g.t1-g.t0) * factor;
-  var a = frac==null ? 0.5 : frac;
+  var a = following ? 1 : (frac==null ? 0.5 : frac);
   var at = g.t0 + (g.t1-g.t0)*a;
   var t0 = at - span*a, t1 = at + span*(1-a);
   if (t1-t0 < MIN_SPAN) {
     var mid = (t0+t1)/2; t0 = mid - MIN_SPAN/2; t1 = mid + MIN_SPAN/2;
   }
   st.view = { t0:t0, t1:t1 };
+  st.follow = following || nearRight(g, t1, t1-t0);
   redraw(cv);
 }
 function panBy(cv, dtMs){
@@ -548,9 +579,20 @@ function panBy(cv, dtMs){
   redraw(cv);
 }
 function resetView(cv){
-  var g = cv._geo; if (!g) { var st0 = S.ch[cv._key]; if (st0) st0.view = null; return; }
-  var st = chState(g.key);
-  st.view = null;
+  var g = cv._geo;
+  var st = chState((g && g.key) || cv._key);
+  st.view = null; st.follow = true;
+  redraw(cv);
+}
+/* 확대 배율은 그대로 두고 오른쪽 끝만 최신 값으로 붙인다 */
+function newestView(cv){
+  var g = cv._geo;
+  var st = chState((g && g.key) || cv._key);
+  if (st.view && g) {
+    var w = g.t1 - g.t0;
+    st.view = { t0: g.ext1 - w, t1: g.ext1 };
+  }
+  st.follow = true;
   redraw(cv);
 }
 
@@ -592,7 +634,9 @@ function bindZoom(cv, key, render){
       var k = pinch.d / d;   /* 손가락이 벌어지면 k<1 → 구간이 좁아진다 = 확대 */
       var mid = (pinch.t0 + pinch.t1)/2, span = (pinch.t1 - pinch.t0) * k;
       if (span < MIN_SPAN) span = MIN_SPAN;
-      chState(cv._geo.key).view = { t0: mid - span/2, t1: mid + span/2 };
+      var stp = chState(cv._geo.key);
+      if (stp.follow !== false) { stp.view = { t0: cv._geo.ext1 - span, t1: cv._geo.ext1 }; }
+      else { stp.view = { t0: mid - span/2, t1: mid + span/2 }; }
       schedule(); return;
     }
     if (drag && pts.size === 1) {
@@ -601,7 +645,9 @@ function bindZoom(cv, key, render){
       drag.moved = true;
       var span = drag.t1 - drag.t0;
       var dt = -dx / Math.max(1, (cv._geo ? cv._geo.iw : 400)) * span;
-      chState(cv._geo.key).view = { t0: drag.t0 + dt, t1: drag.t1 + dt };
+      var stv = chState(cv._geo.key);
+      stv.view = { t0: drag.t0 + dt, t1: drag.t1 + dt };
+      stv.follow = nearRight(cv._geo, drag.t1 + dt, span);   /* 오른쪽 끝까지 끌면 다시 따라간다 */
       hideTip();
       schedule();
       return;
@@ -807,7 +853,7 @@ function renderIntra(){
   }
   $("#footA").innerHTML =
     "<span>창 <b>" + (spanMin >= 1 ? Math.round(spanMin) + "분" : Math.round(spanMin*60) + "초") + "</b>" +
-      (st.view ? " <b style='color:#3d7bfd'>확대</b>" : "") + "</span>" +
+      zoomTag(st) + "</span>" +
     "<span>고 <b>" + f2(s.max) + "</b> <span style='color:#4f5866'>" + hhmm(hiT, KST) + "</span></span>" +
     "<span>저 <b>" + f2(s.min) + "</b> <span style='color:#4f5866'>" + hhmm(loT, KST) + "</span></span>" +
     "<span>평균 <b>" + f2(s.mean) + "</b></span>" +
@@ -974,7 +1020,7 @@ function renderFut(){
     $("#footF").textContent = ""; return;
   }
   var q = S.fut.quote || {};
-  var refs = [], series = [], pts = null;
+  var refs = [], series = [], pts = null, tk = [], tkUsed = false;
 
   if (daily) {
     var ohlc = chf.points.map(function(p){ return [p[0]*1000, p[1], p[2], p[3], p[4]]; });
@@ -985,6 +1031,13 @@ function renderFut(){
   } else {
     pts = chf.points.map(function(p){ return [p[0]*1000, p[1]]; });
     pts = pts.slice(-1440);
+    /* 서버가 4초마다 쌓는 틱. 1분봉보다 촘촘하므로 그 구간은 틱으로 그린다. */
+    tk = (S.fut.ticks || []).map(function(p){ return [p[0]*1000, p[1]]; });
+    if (S.fut.iv === "1" && tk.length > 5 && pts.length) {
+      var tkStart = tk[0][0];
+      pts = pts.filter(function(p){ return p[0] < tkStart; }).concat(tk);
+      tkUsed = true;
+    }
     if (candleMode) {
       var ms = parseInt(S.fut.iv,10) * 60000 * 5;   /* 원본이 분봉 종가뿐이라 5배 구간으로 묶어야 OHLC 가 의미를 갖는다 */
       if (ms < 300000) ms = 300000;
@@ -993,13 +1046,15 @@ function renderFut(){
     } else {
       var last = pts[pts.length-1][1], fr = pts[0][1];
       var up = last >= fr, col = up ? "#3d7bfd" : "#f0605f";
+      /* 값 칩은 아래 "현재" 기준선이 대신한다(같은 값이 두 번 찍히지 않게) */
       series.push({ pts: pts, color: col, w:1.6, fill: up ? "rgba(61,123,253,.08)" : "rgba(240,96,95,.08)",
-                    name: "종가", tag: f2(last), baseV: fr });
+                    name: "종가", baseV: fr });
     }
     if (isFinite(q.open)) refs.push({ y:q.open, color:"#8b94a3", label:"시가 " + f2(q.open) });
     if (isFinite(q.high)) refs.push({ y:q.high, color:"#f0605f", label:"고 " + f2(q.high) });
     if (isFinite(q.low))  refs.push({ y:q.low,  color:"#3d7bfd", label:"저 " + f2(q.low) });
     if (isFinite(q.prev)) refs.push({ y:q.prev, color:"#8b94a3", label:"기준 " + f2(q.prev) });
+    if (isFinite(q.price)) refs.push({ y:q.price, color:(q.change>=0?"#3d7bfd":"#f0605f"), label:"현재 " + f2(q.price) });
   }
 
   draw(cv, {
@@ -1017,14 +1072,17 @@ function renderFut(){
     var t0 = g ? g.t0 : pts[0][0], t1 = g ? g.t1 : pts[pts.length-1][0];
     var vs = visStats(pts, t0, t1);
     var s = stats(vs);
-    foot.push("<span>창 <b>" + Math.round((t1-t0)/60000) + "분</b>" + (st.view ? " <b style='color:#3d7bfd'>확대</b>" : "") + "</span>");
+    foot.push("<span>창 <b>" + Math.round((t1-t0)/60000) + "분</b>" + zoomTag(st) + "</span>");
     if (s) foot.push("<span>고 <b>" + f2(s.max) + "</b> · 저 <b>" + f2(s.min) + "</b></span>" +
                      "<span>범위 <b>" + f2(s.max-s.min) + "</b></span>" +
                      "<span>σ <b>" + fp(s.sd,2) + "</b></span>");
-    foot.push("<span class='hint'>" + S.fut.iv + "분 " + vs.length + "봉" +
+    foot.push("<span class='hint'>" +
+              (tkUsed ? "실시간 틱 " + (S.fut.res || 5) + "초 · " + tk.length.toLocaleString() + "점"
+                      : S.fut.iv + "분봉 " + vs.length + "점") +
               (candleMode ? " · 봉 모드" : " · 선 모드") + "</span>");
   }
-  foot.push("<span class='hint'>" + (S.fut.at ? ago(S.fut.at) : "") +
+  foot.push("<span class='hint'>" + (st.follow === false ? "<b style='color:#f0a24a'>과거 보는 중</b> · ⏭ 로 최신 · " : "") +
+            (S.fut.at ? ago(S.fut.at) : "") +
             " · API " + (S.fut.base ? new URL(S.fut.base).host : "—") + "</span>");
   $("#footF").innerHTML = foot.join("");
 }
@@ -1078,14 +1136,13 @@ function futStatus(){
 }
 
 function kickKospi(){
-  if (T.kospi) { clearTimeout(T.kospi); T.kospi = 0; }
+  if (T.kospi) clearTimeout(T.kospi);
+  T.kospi = setTimeout(kickKospi, KOSPI_MS);   /* 예약을 먼저 걸어 두면 루프가 끊기지 않는다 */
   fetchKospiOnce().then(function(){
     renderIntra(); renderTrack(); renderPath(); kospiStatus();
   }).catch(function(e){
     S.kospi.err = (e && e.message) ? e.message : "연결 실패";
     kospiStatus();
-  }).then(function(){
-    if (!document.hidden) T.kospi = setTimeout(kickKospi, KOSPI_MS);
   });
 }
 
@@ -1130,13 +1187,44 @@ async function loadChart(){
   renderFut();
 }
 
+async function loadTicks(full){
+  try {
+    var base = await futBase();
+    var have = (!full && S.fut.ticks && S.fut.ticks.length) ? S.fut.ticks[S.fut.ticks.length-1][0] : 0;
+    var url = base + "/api/ticks?symbol=" + encodeURIComponent(S.fut.sym) + "&minutes=720" +
+              (have ? "&since=" + have : "") + "&_=" + Date.now();
+    var r = await fetch(url, { cache:"no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    var j = await r.json();
+    if (!j || !j.points) throw new Error("틱 응답 오류");
+    if (have) {
+      for (var i=0;i<j.points.length;i++) S.fut.ticks.push(j.points[i]);
+      if (S.fut.ticks.length > 13000) S.fut.ticks = S.fut.ticks.slice(-13000);
+    } else {
+      S.fut.ticks = j.points;
+    }
+    S.fut.res = j.resolution;
+  } catch (e) {
+    if (!S.fut.ticks || !S.fut.ticks.length) S.fut.ticks = [];
+  }
+  renderFut();
+}
+
+function loopTick(){
+  if (T.tick) clearTimeout(T.tick);
+  T.tick = setTimeout(loopTick, TICK_MS);
+  loadTicks(false);
+}
+
 function loopQuote(){
-  if (T.quote) { clearTimeout(T.quote); T.quote = 0; }
-  loadQuotes().then(function(){ if (!document.hidden) T.quote = setTimeout(loopQuote, QUOTE_MS); });
+  if (T.quote) clearTimeout(T.quote);
+  T.quote = setTimeout(loopQuote, QUOTE_MS);
+  loadQuotes();
 }
 function loopChart(){
-  if (T.chart) { clearTimeout(T.chart); T.chart = 0; }
-  loadChart().then(function(){ if (!document.hidden) T.chart = setTimeout(loopChart, CHART_MS); });
+  if (T.chart) clearTimeout(T.chart);
+  T.chart = setTimeout(loopChart, CHART_MS);
+  loadChart();
 }
 
 /* ---------- 초기화 ---------- */
@@ -1155,11 +1243,13 @@ chips($("#chModeF"), MODES, "line", function(v){
 });
 chips($("#chSym"), FUT_SYMS, S.fut.sym, function(v){
   S.fut.sym = v; S.fut.chart = null; S.fut.quote = null;
-  S.ch["cvF"].view = null;
-  renderFut(); loadQuotes(); loopChart();
+  S.fut.ticks = []; S.fut.res = null;
+  S.ch["cvF"].view = null; S.ch["cvF"].follow = true;
+  renderFut(); loadQuotes(); loopChart(); loopTick();
 });
 chips($("#chIv"), FUT_IVS, S.fut.iv, function(v){
-  S.fut.iv = v; S.fut.chart = null; S.ch["cvF"].view = null; renderFut(); loopChart();
+  S.fut.iv = v; S.fut.chart = null; S.ch["cvF"].view = null; S.ch["cvF"].follow = true;
+  renderFut(); loopChart();
 });
 
 bindZoom($("#cvA"), "cvA", renderIntra);
@@ -1176,6 +1266,7 @@ Array.prototype.forEach.call(document.querySelectorAll(".zb"), function(box){
     var z = b.getAttribute("data-z");
     if (z === "in") zoomAt(cv, 0.7, 0.5);
     else if (z === "out") zoomAt(cv, 1.45, 0.5);
+    else if (z === "live") newestView(cv);
     else resetView(cv);
   });
 });
@@ -1184,10 +1275,11 @@ $("#refresh").onclick = function(){
   if (T.kospi) clearTimeout(T.kospi);
   if (T.quote) clearTimeout(T.quote);
   if (T.chart) clearTimeout(T.chart);
-  T.kospi = T.quote = T.chart = 0;
+  if (T.tick) clearTimeout(T.tick);
+  T.kospi = T.quote = T.chart = T.tick = 0;
   S.kospi.err = ""; S.fut.err = "";
   kospiStatus(); futStatus();
-  kickKospi(); loopQuote(); loopChart();
+  kickKospi(); loopQuote(); loopChart(); loadTicks(true).then(function(){ loopTick(); });
 };
 window.addEventListener("keydown", function(e){
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1200,9 +1292,10 @@ document.addEventListener("visibilitychange", function(){
     if (T.kospi) clearTimeout(T.kospi);
     if (T.quote) clearTimeout(T.quote);
     if (T.chart) clearTimeout(T.chart);
-    T.kospi = T.quote = T.chart = 0;
+    if (T.tick) clearTimeout(T.tick);
+    T.kospi = T.quote = T.chart = T.tick = 0;
   } else {
-    kickKospi(); loopQuote(); loopChart();
+    kickKospi(); loopQuote(); loopChart(); loopTick();
   }
 });
 
@@ -1217,7 +1310,7 @@ window.addEventListener("resize", function(){
 });
 
 renderIntra(); renderTrack(); renderPath(); renderFut();
-kickKospi(); loopQuote(); loopChart();
+kickKospi(); loopQuote(); loopChart(); loopTick();
 </script>
 </body>
 </html>
