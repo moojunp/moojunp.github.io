@@ -1085,7 +1085,7 @@ function renderFut(){
   }
   foot.push("<span class='hint'>" + (st.follow === false ? "<b style='color:#f0a24a'>과거 보는 중</b> · ⏭ 로 최신 · " : "") +
             (S.fut.at ? ago(S.fut.at) : "") +
-            " · API " + (S.fut.base ? new URL(S.fut.base).host : "—") + "</span>");
+            " · API " + (S.fut.base ? new URL(S.fut.base).host.replace(/\.trycloudflare\.com$/, "") : "—") + "</span>");
   $("#footF").innerHTML = foot.join("");
 }
 
@@ -1169,6 +1169,7 @@ async function loadQuotes(){
     if (q.ok === false) throw new Error(q.error || "데이터 없음");
     S.fut.quote = q; S.fut.at = Date.now(); S.fut.err = "";
   } catch (e) {
+    S.fut.base = "";            /* 터널 주소가 바뀌었을 수 있다 → endpoint.json 재확인 */
     S.fut.err = (e && e.message) ? e.message : "연결 실패";
   }
   futStatus(); renderFut();
@@ -1184,6 +1185,7 @@ async function loadChart(){
     if (!j || !j.points) throw new Error("차트 응답 오류");
     S.fut.chart = j; S.fut.err = "";
   } catch (e) {
+    S.fut.base = "";
     S.fut.err = (e && e.message) ? e.message : "연결 실패";
   }
   renderFut();
@@ -1207,6 +1209,7 @@ async function loadTicks(full){
     }
     S.fut.res = j.resolution;
   } catch (e) {
+    S.fut.base = "";
     if (!S.fut.ticks || !S.fut.ticks.length) S.fut.ticks = [];
   }
   renderFut();
