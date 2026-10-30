@@ -56,6 +56,11 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
 .badge{font-size:9.5px;padding:1px 5px;border-radius:4px;background:#1b2028;color:#5d6675;border:1px solid #232a34}
 .badge.ok{color:#39c98a;border-color:#204434;background:#141f1b}
 .badge.no{color:#f0605f;border-color:#42262a;background:#1f1517}
+.trk-badge{font-size:9.5px;color:#7d8695;background:#1b2028;border:1px solid #232a34;border-radius:4px;padding:1px 6px;white-space:nowrap}
+.ann{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:5px 10px 0;font-size:10px;color:#7d8695}
+.ann .tgt{display:inline-flex;gap:9px;align-items:center;color:#ff8a3d;background:#241a12;border:1px solid #4a2f1c;border-radius:5px;padding:2px 7px}
+.ann .tgt b{color:#ffb27a;font-variant-numeric:tabular-nums;font-size:11px}
+.ann .tgt .id{color:#8a7259;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q{display:flex;align-items:baseline;gap:10px;padding:8px 10px 2px;flex-wrap:wrap}
 .q .sym{font-weight:700;font-size:14px;color:#eaeef5}
 .q .nm{font-size:10.5px;color:var(--faint)}
@@ -111,11 +116,13 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
     <div class="foot" id="footA"></div>
   </section>
 
-  <!-- 2. KOSPI 3-TRACK -->
+  <!-- 2. KOSPI 200 | 연속 누적 3-TRACK (원본 페이지와 같은 표현) -->
   <section class="card" id="c-track">
     <div class="hd">
-      <h2>KOSPI200 · 3-TRACK</h2>
+      <h2>KOSPI 200 | 연속 누적 3-TRACK</h2>
+      <span class="trk-badge">과거 확정 좌표 유지 · 새 목표 추가</span>
       <div class="chips" id="chWinB"></div>
+      <div class="chips" id="chTrkB"></div>
       <div class="zb" data-zc="cvB">
         <button data-z="out" title="축소 (−)">−</button>
         <button data-z="in" title="확대 (+)">+</button>
@@ -124,12 +131,12 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
       </div>
     </div>
     <div class="lg">
-      <span><i class="k" style="border-color:#3d7bfd"></i>공식 실측</span>
-      <span><i class="k d" style="border-color:#f0a24a"></i>RAW · 10분 목표</span>
-      <span><i class="k t" style="border-color:#39c98a"></i>CAL · 1분 목표</span>
-      <span style="color:#5d6675;border-top:1px dashed #5d6675;height:0;width:15px;display:inline-block"></span>
-      <span style="margin-left:-8px">발행가 기준선</span>
+      <span><i class="k" style="border-color:#4f86ff"></i>공식 실측</span>
+      <span><i class="k d" style="border-color:#ff8a3d"></i>RAW · 10분 목표 누적</span>
+      <span><i class="k" style="border-color:#22c78a"></i>CAL · 1분 목표 누적</span>
+      <span class="hint" style="margin-left:auto">드래그로 과거 탐색 · 휠로 확대 · 더블클릭 리셋</span>
     </div>
+    <div class="ann" id="annB"></div>
     <canvas class="cv" id="cvB" height="250"></canvas>
     <div class="foot" id="footB"></div>
     <div class="panel" id="panelK"></div>
@@ -200,6 +207,9 @@ var QUOTE_MS = 5000;
 var TICK_MS = 5000;
 var CHART_MS = 30000;
 var WINS = [[10,"10분"],[30,"30분"],[60,"1시간"],[180,"3시간"],[0,"전체"]];
+/* 3-TRACK 은 원본 페이지와 같이 분 단위 조회 범위를 쓴다 */
+var WINS_TRK = [[1,"1분"],[3,"3분"],[5,"5분"],[10,"10분"],[30,"30분"],[60,"1시간"],[0,"전체"]];
+var TRK_LEAD = 600000;   // 예측 구간은 발행 +10분
 var MODES = [["line","선"],["candle","봉"]];
 var FUT_SYMS = [["ES=F","ES"],["NQ=F","NQ"],["YM=F","YM"],["VIX=F","VX"]];
 var FUT_IVS = [["1","1분"],["5","5분"],["15","15분"],["30","30분"],["60","60분"],["1d","1일"]];
@@ -316,7 +326,24 @@ function draw(cv, spec){
   if (spec.slim) { padT = 6; padB = 14; padL = 50; padR = 80; }
   var iw = Math.max(20, W-padL-padR), ih = Math.max(20, H-padT-padB);
 
-  var series = (spec.series||[]).filter(function(s){ return (s.pts && s.pts.length) || (s.ohlc && s.ohlc.length); });
+  var srcSeries = (spec.series||[]).filter(function(s){ return (s.pts && s.pts.length) || (s.ohlc && s.ohlc.length) || (s.segs && s.segs.length); });
+  /* 끊긴 구간(segs)은 조각별 시리즈로 펼친다 — 발행 경로가 90초 넘게 비면 그 지점에서 선을 끊는 규칙 */
+  var series = [];
+  for (var si0=0; si0<srcSeries.length; si0++){
+    var sx0 = srcSeries[si0];
+    if (sx0.segs && sx0.segs.length){
+      for (var gi0=0; gi0<sx0.segs.length; gi0++){
+        var cp0 = {}; for (var kk0 in sx0) if (kk0 !== "segs") cp0[kk0] = sx0[kk0];
+        cp0.pts = sx0.segs[gi0];
+        var lastSeg = (gi0 === sx0.segs.length-1);
+        cp0.tag = lastSeg ? sx0.tag : null;
+        cp0.dot = lastSeg ? sx0.dot : false;
+        cp0.name = lastSeg ? sx0.name : null;
+        cp0.tip = lastSeg ? sx0.tip : false;
+        if (cp0.pts && cp0.pts.length) series.push(cp0);
+      }
+    } else series.push(sx0);
+  }
   var refs = spec.refs || [];
   var ext = extents(series);
   if (!ext || series.length === 0) {
@@ -328,6 +355,11 @@ function draw(cv, spec){
   var st = chState(spec.key);
   var t0, t1;
   var lastT = ext[1];
+  /* 시간축을 '지금 + 예측 구간'까지 늘린다 — 원본처럼 오른쪽에 예측 구간이 보이게 */
+  if (spec.nowT && isFinite(spec.nowT)) {
+    var wantEnd = spec.nowT + (spec.leadMs || 0);
+    if (wantEnd > lastT) lastT = wantEnd;
+  }
   /* 확대 상태에서 "따라가기"면 창 길이를 유지한 채 오른쪽 끝을 최신 점에 붙인다 */
   if (st.view && st.follow !== false) {
     var keepW = st.view.t1 - st.view.t0;
@@ -339,8 +371,11 @@ function draw(cv, spec){
     if (!(t1 - t0 >= 1000)) { st.view = null; t0 = ext[0]; t1 = ext[1]; }
   }
   if (!st.view) {
-    if (st.span) { t0 = Math.max(ext[0], lastT - st.span*60000); t1 = lastT; }
-    else { t0 = ext[0]; t1 = ext[1]; }
+    if (st.span) {
+      var anchorT = (spec.nowT && isFinite(spec.nowT)) ? spec.nowT : lastT;
+      t0 = Math.max(ext[0], anchorT - st.span*60000); t1 = lastT;
+    }
+    else { t0 = ext[0]; t1 = lastT; }
   }
   if (!(t1 > t0)) t1 = t0 + 60000;
 
@@ -399,6 +434,50 @@ function draw(cv, spec){
     c.beginPath(); c.moveTo(xx+.5, padT); c.lineTo(xx+.5, padT+ih); c.stroke();
     c.fillStyle = "#4f5866";
     c.fillText(spec.xfmt ? spec.xfmt(xv) : String(t), Math.min(Math.max(xx,padL+16), padL+iw-16), padT+ih+4);
+  }
+
+  /* 예측 구간 띠 (지금 → 마지막 목표 시각) */
+  if (spec.band && isFinite(spec.band.from) && isFinite(spec.band.to) && spec.band.to > t0) {
+    var bx0 = Math.max(padL, X(Math.max(spec.band.from, t0)));
+    var bx1 = Math.min(padL+iw, X(Math.min(spec.band.to, t1)));
+    if (bx1 > bx0 + 1) {
+      c.save();
+      c.fillStyle = spec.band.color || "rgba(34,199,138,.06)";
+      c.fillRect(bx0, padT, bx1-bx0, ih);
+      c.strokeStyle = "rgba(34,199,138,.28)"; c.lineWidth = 1;
+      if (c.setLineDash) c.setLineDash([3,3]);
+      c.beginPath(); c.moveTo(bx0+.5, padT); c.lineTo(bx0+.5, padT+ih); c.stroke();
+      if (c.setLineDash) c.setLineDash([]);
+      if (spec.band.label && bx1-bx0 > 52) {
+        c.fillStyle = "#3f8a6f"; c.font = "9.5px system-ui,sans-serif";
+        c.textAlign = "right"; c.textBaseline = "bottom";
+        c.fillText(spec.band.label, bx1-4, padT+ih-4);
+      }
+      c.restore();
+    }
+  }
+
+  /* 세로 기준선 (현재 시각) */
+  if (spec.vline && isFinite(spec.vline.t) && spec.vline.t >= t0 && spec.vline.t <= t1) {
+    var vx = X(spec.vline.t);
+    c.save();
+    c.strokeStyle = spec.vline.color || "#5d6675"; c.lineWidth = 1;
+    if (c.setLineDash) c.setLineDash([3,3]);
+    c.beginPath(); c.moveTo(vx+.5, padT); c.lineTo(vx+.5, padT+ih); c.stroke();
+    if (c.setLineDash) c.setLineDash([]);
+    if (spec.vline.label) {
+      c.font = "9px system-ui,sans-serif"; c.textAlign = "left"; c.textBaseline = "top";
+      var vlw = c.measureText(spec.vline.label).width + 8;
+      var vright = (vx + 3 + vlw > padL + iw);
+      var vlx = vright ? vx - 3 : vx + 3;
+      c.fillStyle = "rgba(36,61,82,.92)";
+      if (c.roundRect) { c.beginPath(); c.roundRect(vright ? vlx-vlw+3 : vlx-3, padT+2, vlw, 13, 3); c.fill(); }
+      else c.fillRect(vright ? vlx-vlw+3 : vlx-3, padT+2, vlw, 13);
+      c.textAlign = vright ? "right" : "left";
+      c.fillStyle = "#dfe3ea";
+      c.fillText(spec.vline.label, vlx, padT+4);
+    }
+    c.restore();
   }
 
   /* 기준선 */
@@ -706,6 +785,7 @@ function bindZoom(cv, key, render){
     var rows = [];
     for (var i=0;i<g.series.length;i++){
       var se = g.series[i], arr = se.ohlc || se.pts;
+      if (se.tip === false) continue;
       if (!arr || !arr.length) continue;
       var best = null, bd = Infinity;
       for (var j=0;j<arr.length;j++){
@@ -875,38 +955,170 @@ function pickCandleMs(cv, t0, t1, base){
   return 3600000;
 }
 
+/* ---------- 3-TRACK 누적 저장소 ----------
+   원본 페이지의 "연속 누적"은 발행마다의 10분 목표 경로를 시간 순으로 이어붙인 한 줄이다.
+   스냅샷은 지금 유효한 발행 경로 하나만 주므로(prediction_contract.completed 는 비어 있다),
+   브라우저가 받은 발행을 날짜별로 쌓아 두고 새로고침해도 이어지도록 localStorage 에 남긴다. */
+var TRK = { day:"", map:{}, hist:false, gap:95000 };
+
+function kstDate(ms){ return new Date(ms + 9*3600e3).toISOString().slice(0,10); }
+
+function trkLoad(){
+  var day = kstDate(Date.now());
+  if (TRK.day === day) return TRK;
+  TRK.day = day; TRK.map = {};
+  try {
+    var s = localStorage.getItem("k3track:" + day);
+    if (s) { var o = JSON.parse(s); if (o && typeof o === "object" && !Array.isArray(o)) TRK.map = o; }
+  } catch (e) {}
+  return TRK;
+}
+function trkSave(){
+  try { localStorage.setItem("k3track:" + TRK.day, JSON.stringify(TRK.map)); } catch (e) {}
+}
+function trkTrim(){
+  var ids = Object.keys(TRK.map), list = [];
+  for (var i=0;i<ids.length;i++) list.push(TRK.map[ids[i]]);
+  list.sort(function(a,b){ return a.issuedAt - b.issuedAt; });
+  var dayStart = Date.parse(TRK.day + "T00:00:00+09:00");
+  var kept = list.filter(function(r){ return r.targetAt >= dayStart - 36*3600e3; });
+  if (kept.length > 400) kept = kept.slice(kept.length - 400);
+  var m = {};
+  for (var j=0;j<kept.length;j++) m[kept[j].id] = kept[j];
+  TRK.map = m;
+}
+function trkIngest(k){
+  trkLoad();
+  var src = [], a = k.active, done = (k.pc && k.pc.completed) || [];
+  if (a) src.push(a);
+  for (var i=0;i<done.length;i++) if (done[i]) src.push(done[i]);
+  var changed = false;
+  for (var j=0;j<src.length;j++){
+    var x = src[j];
+    var id = x.issuance_id || x.raw_version_id || x.id || null;
+    var rp = x.raw_path || (x.raw && x.raw.points) || null;
+    var cp = x.calibrated_path || (x.calibrated && x.calibrated.points) || [];
+    if (!id || !rp || !rp.length) continue;
+    var prev = TRK.map[id];
+    var rec = {
+      id: String(id),
+      issuedAt: Date.parse(x.issued_at_kst || x.issued_at || "") || rp[0][0],
+      targetAt: Date.parse(x.horizon_end_at_kst || x.target_at_kst || "") || rp[rp.length-1][0],
+      rawTarget: x.raw_target_price != null ? +x.raw_target_price : rp[rp.length-1][1],
+      calTarget: x.calibrated_target_price != null ? +x.calibrated_target_price
+                 : (cp.length ? cp[cp.length-1][1] : null),
+      raw: rp.map(function(p){ return [+p[0], +p[1]]; }),
+      /* CAL 은 '관측 +1분' 목표다 — 원본의 CAL 1분 목표 누적과 같게 1분까지만 남긴다 */
+      cal: cp.filter(function(p){ return p[0] <= cp[0][0] + 90000; })
+             .map(function(p){ return [+p[0], +p[1]]; })
+    };
+    if (!prev || prev.raw.length !== rec.raw.length || prev.cal.length !== rec.cal.length) changed = true;
+    TRK.map[id] = rec;
+  }
+  if (changed) { trkTrim(); trkSave(); }
+  return changed;
+}
+function trkList(){
+  trkLoad();
+  var ids = Object.keys(TRK.map), out = [];
+  for (var i=0;i<ids.length;i++) out.push(TRK.map[ids[i]]);
+  out.sort(function(a,b){ return a.issuedAt - b.issuedAt; });
+  return out;
+}
+/* 발행 경로를 시간 순으로 이어붙인다. 90초 넘게 비면 그 지점에서 선을 끊는다(원본 규칙). */
+function trkCumulative(list, field, gap){
+  var segs = [], cur = null;
+  for (var i=0;i<list.length;i++){
+    var pts = list[i][field];
+    if (!pts || !pts.length) continue;
+    if (cur && pts[0][0] - cur[cur.length-1][0] > gap) { segs.push(cur); cur = null; }
+    if (!cur) cur = [];
+    for (var j=0;j<pts.length;j++){
+      if (cur.length && pts[j][0] <= cur[cur.length-1][0]) continue;
+      cur.push([pts[j][0], pts[j][1]]);
+    }
+  }
+  if (cur && cur.length) segs.push(cur);
+  return segs;
+}
+
 function renderTrack(){
   var k = kospiTracks(), cv = $("#cvB");
   if (!k || !k.actual.length){
     draw(cv, { key:"cvB", empty: S.kospi.snap ? "실측 데이터 없음" : "KOSPI 데이터 대기…" });
-    $("#footB").textContent = ""; return;
+    $("#footB").textContent = ""; $("#annB").textContent = ""; return;
   }
-  var act = bucketOHLC(k.actual, 60000).map(function(c){ return [c[0], c[4]]; });
-  var a1 = act[act.length-1][1];
-  var rawT = k.raw.length ? k.raw[k.raw.length-1][1] : null;
-  var calT = k.cal.length ? k.cal[k.cal.length-1][1] : null;
+  trkIngest(k);
+
+  var list = trkList();
+  var segsRaw = trkCumulative(list, "raw", TRK.gap);
+  var segsCal = trkCumulative(list, "cal", TRK.gap);
+  var act = k.actual;
+  var a1 = act[act.length-1][1], a1t = act[act.length-1][0];
+  var lastRawSeg = segsRaw.length ? segsRaw[segsRaw.length-1] : null;
+  var lastCalSeg = segsCal.length ? segsCal[segsCal.length-1] : null;
+  var rawT = lastRawSeg ? lastRawSeg[lastRawSeg.length-1][1] : null;
+  var calT = lastCalSeg ? lastCalSeg[lastCalSeg.length-1][1] : null;
+  var bandEnd = 0;
+  if (lastRawSeg) bandEnd = Math.max(bandEnd, lastRawSeg[lastRawSeg.length-1][0]);
+  if (lastCalSeg) bandEnd = Math.max(bandEnd, lastCalSeg[lastCalSeg.length-1][0]);
+
+  var series = [];
+  /* 과거 발행 경로 — 원본의 '과거 발행 보기' 자리 */
+  if (TRK.hist && list.length > 1){
+    var past = list.slice(0, list.length-1);
+    series.push({ segs: past.map(function(r){ return r.raw; }), color:"rgba(255,138,61,.20)", w:1, tip:false });
+    series.push({ segs: past.map(function(r){ return r.cal; }), color:"rgba(34,199,138,.16)", w:1, tip:false });
+  }
+  if (segsRaw.length) series.push({ segs: segsRaw, color:"#ff8a3d", w:1.5, dash:[5,4],
+    name:"RAW · 10분 목표 누적", tag:"RAW " + f2(rawT) });
+  if (segsCal.length) series.push({ segs: segsCal, color:"#22c78a", w:2,
+    name:"CAL · 1분 목표 누적", tag:"CAL " + f2(calT) });
+  series.push({ pts: act, color:"#4f86ff", w:2.2, name:"실측 누적",
+    tag:"실측 " + f2(a1), baseV: act[0][1] });
+
   draw(cv, {
-    key: "cvB",
-    series: [
-      { pts: act, color:"#3d7bfd", w:1.7, fill:"rgba(61,123,253,.06)", name:"공식 실측", tag:"실측 " + f2(a1), baseV: act[0][1] },
-      { pts: k.raw, color:"#f0a24a", w:1.4, dash:[5,4], name:"RAW·10분", tag:"RAW " + f2(rawT) },
-      { pts: k.cal, color:"#39c98a", w:1.4, dash:[2,3], name:"CAL·1분", tag:"CAL " + f2(calT) }
-    ],
-    refs: k.active && k.active.anchor_price ? [{ y:k.active.anchor_price, color:"#5d6675", label:"발행가 " + f2(k.active.anchor_price) }] : [],
+    key: "cvB", mark: false, series: series,
+    nowT: a1t, leadMs: TRK_LEAD,
+    band: bandEnd ? { from:a1t, to:bandEnd, color:"rgba(34,199,138,.055)", label:"예측 구간" } : null,
+    vline: { t:a1t, label:"현재 " + hhmm(a1t, KST), color:"#6b7484" },
     xfmt: function(ms2){ return hhmm(ms2, KST); },
     tipTime: function(ms2){ return hhmmss(ms2) + " KST"; }
   });
+
   function delta(v){ if (v==null) return "—"; var dd=v-a1; return "<span class='" + (dd>=0?"up":"dn") + "'>" + sgn(dd) + "</span>"; }
   var g = cv._geo;
   var t0 = g ? g.t0 : act[0][0], t1 = g ? g.t1 : act[act.length-1][0];
   var s = stats(visStats(act, t0, t1));
+  var cover = list.length > 1 ? (list[list.length-1].targetAt - list[0].issuedAt)/60000 : 0;
   $("#footB").innerHTML =
     "<span>실측 <b>" + f2(a1) + "</b></span>" +
-    "<span>RAW <b>" + f2(rawT) + "</b> " + delta(rawT) + "</span>" +
-    "<span>CAL <b>" + f2(calT) + "</b> " + delta(calT) + "</span>" +
+    "<span>RAW 누적 <b>" + f2(rawT) + "</b> " + delta(rawT) + "</span>" +
+    "<span>CAL 누적 <b>" + f2(calT) + "</b> " + delta(calT) + "</span>" +
     (s ? "<span>창 고/저 <b>" + f2(s.max) + "</b> / <b>" + f2(s.min) + "</b></span>" +
          "<span>σ <b>" + fp(s.sd,3) + "</b></span>" : "") +
-    "<span class='hint'>1분 봉 " + act.length + "개" + (g ? " · 창 " + Math.round((t1-t0)/60000) + "분" : "") + "</span>";
+    "<span class='hint'>실측 1초 틱 " + act.length.toLocaleString() + "점 · 누적 발행 " + list.length + "건" +
+      (cover ? " · 범위 " + Math.round(cover) + "분" : "") +
+      (g ? " · 창 " + Math.round((t1-t0)/60000) + "분" : "") + "</span>";
+
+  /* 발행 근거 카드 — 원본의 최신 RAW 목표 주석 자리 */
+  var el = $("#annB"), last = list.length ? list[list.length-1] : null;
+  if (!last){
+    el.innerHTML = "<span class='hint'>누적 발행 대기 — 스냅샷에서 발행 경로를 받는 대로 쌓습니다</span>";
+  } else {
+    var pv = list.length > 1 ? list[list.length-2] : null;
+    var dv = (pv && pv.rawTarget != null && last.rawTarget != null) ? last.rawTarget - pv.rawTarget : null;
+    el.innerHTML =
+      "<span class='tgt'><b>RAW 10분 목표 " + f2(last.rawTarget) + "</b>" +
+        "<span>목표 시각 " + (last.targetAt ? hhmmss(last.targetAt) : "—") + " KST</span>" +
+        "<span>" + (dv == null ? "직전 발행 대기"
+                  : "직전 " + f2(pv.rawTarget) + " → 현재 " + f2(last.rawTarget) + " (" + sgn(dv) + ")") + "</span>" +
+        "<span>발행 " + (last.issuedAt ? hhmmss(last.issuedAt) : "—") + " KST</span>" +
+        "<span class='id'>" + String(last.id).replace(/^native-p0-shadow:/,"").slice(0,12) + "…</span></span>" +
+      "<span class='hint'>누적 " + list.length + "건" + (TRK.hist ? " · 과거 발행 표시" : "") + "</span>" +
+      "<span class='hint'>실측은 현재, CAL은 관측 +1분, RAW는 발행 +10분 목표입니다</span>";
+  }
+
   renderKospiPanel(k);
 }
 
@@ -1239,7 +1451,30 @@ function setSpan(key, render, v){
   render();
 }
 chips($("#chWinA"), WINS, chState("cvA",30).span, function(v){ setSpan("cvA", renderIntra, v); });
-chips($("#chWinB"), WINS, chState("cvB",180).span, function(v){ setSpan("cvB", renderTrack, v); });
+chips($("#chWinB"), WINS_TRK, chState("cvB",10).span, function(v){ setSpan("cvB", renderTrack, v); });
+/* 3-TRACK 전용 토글 — 원본의 '자동 추종 ON/OFF'·'과거 발행 보기' 자리 */
+(function(){
+  var box = $("#chTrkB");
+  var bF = document.createElement("button");
+  bF.textContent = "자동 추종 ON";
+  bF.className = (chState("cvB").follow !== false) ? "on" : "";
+  bF.onclick = function(){
+    var st = chState("cvB");
+    st.follow = !(st.follow !== false);
+    bF.textContent = "자동 추종 " + (st.follow !== false ? "ON" : "OFF");
+    bF.className = st.follow !== false ? "on" : "";
+    if (st.follow !== false) newestView($("#cvB")); else renderTrack();
+  };
+  var bH = document.createElement("button");
+  bH.textContent = "과거 발행";
+  bH.className = TRK.hist ? "on" : "";
+  bH.onclick = function(){
+    TRK.hist = !TRK.hist;
+    bH.className = TRK.hist ? "on" : "";
+    renderTrack();
+  };
+  box.appendChild(bF); box.appendChild(bH);
+})();
 chips($("#chModeA"), MODES, "line", function(v){
   var st = chState("cvA"); st.mode = v; renderIntra();
 });
