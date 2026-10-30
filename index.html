@@ -571,7 +571,7 @@ function bindZoom(cv, key, render){
   cv.addEventListener("dblclick", function(e){ e.preventDefault(); resetView(cv); });
 
   cv.addEventListener("pointerdown", function(e){
-    cv.setPointerCapture(e.pointerId);
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
     pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
     if (pts.size === 1) drag = { x:e.clientX, t0: cv._geo ? cv._geo.t0 : 0, t1: cv._geo ? cv._geo.t1 : 0, moved:false };
     if (pts.size === 2) { drag = null; pinchStart(); }
