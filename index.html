@@ -156,6 +156,7 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
       <h2>US FUTURES</h2>
       <div class="chips" id="chSym"></div>
       <div class="chips" id="chIv"></div>
+      <div class="chips" id="chWinF"></div>
       <div class="chips" id="chModeF"></div>
       <div class="zb" data-zc="cvF">
         <button data-z="out" title="축소 (−)">−</button>
@@ -1011,7 +1012,7 @@ function renderFutHead(){
 function renderFut(){
   var cv = $("#cvF"), chf = S.fut.chart;
   renderFutHead();
-  var st = chState("cvF", 0);
+  var st = chState("cvF", 30);
   var daily = S.fut.iv === "1d";
   var candleMode = daily || st.mode === "candle";
 
@@ -1241,6 +1242,7 @@ chips($("#chModeA"), MODES, "line", function(v){
 chips($("#chModeF"), MODES, "line", function(v){
   var st = chState("cvF"); st.mode = v; renderFut();
 });
+chips($("#chWinF"), WINS, chState("cvF",30).span, function(v){ setSpan("cvF", renderFut, v); });
 chips($("#chSym"), FUT_SYMS, S.fut.sym, function(v){
   S.fut.sym = v; S.fut.chart = null; S.fut.quote = null;
   S.fut.ticks = []; S.fut.res = null;
