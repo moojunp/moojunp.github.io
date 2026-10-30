@@ -28,7 +28,7 @@ button{font:inherit;color:var(--dim);background:#20242c;border:1px solid transpa
   padding:2px 7px;font-size:11px;cursor:pointer;white-space:nowrap}
 button:hover{background:#282d37;color:var(--fg)}
 button.on{background:#2b3646;color:#fff}
-main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto}
+main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items:start}
 .card{background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .hd{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--hd);
   border-bottom:1px solid var(--line);flex-wrap:wrap}
@@ -290,8 +290,8 @@ function bucketOHLC(pts, ms){
   for (var i=0;i<pts.length;i++){
     var t = pts[i][0], v = pts[i][1];
     b = Math.floor(t/ms)*ms;
-    if (!cur || cur.t !== b) { cur = { t:b, o:v, h:v, l:v, c:v }; out.push(cur); }
-    else { if (v>cur.h) cur.h=v; if (v<cur.l) cur.l=v; cur.c=v; }
+    if (!cur || cur[0] !== b) { cur = [b, v, v, v, v]; out.push(cur); }
+    else { if (v>cur[2]) cur[2]=v; if (v<cur[3]) cur[3]=v; cur[4]=v; }
   }
   return out;
 }
