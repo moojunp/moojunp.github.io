@@ -589,7 +589,7 @@ function bindZoom(cv, key, render){
     if (pinch && pts.size === 2 && cv._geo) {
       var a = twoPts();
       var d = Math.abs(a[0].x-a[1].x) + 1;
-      var k = pinch.d / d;
+      var k = pinch.d / d;   /* 손가락이 벌어지면 k<1 → 구간이 좁아진다 = 확대 */
       var mid = (pinch.t0 + pinch.t1)/2, span = (pinch.t1 - pinch.t0) * k;
       if (span < MIN_SPAN) span = MIN_SPAN;
       chState(cv._geo.key).view = { t0: mid - span/2, t1: mid + span/2 };
