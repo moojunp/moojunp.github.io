@@ -1,0 +1,1223 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<title>KOSPI200 · 선물 · 핵심 뷰</title>
+<style>
+:root{
+  --bg:#0e1015; --card:#14171d; --line:#23272f; --hd:#191d24;
+  --fg:#dfe3ea; --dim:#8b94a3; --faint:#5d6675;
+  --blue:#3d7bfd; --orange:#f0a24a; --green:#39c98a; --red:#f0605f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);
+  font:12px/1.35 -apple-system,"Segoe UI","Malgun Gothic",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+#bar{position:sticky;top:0;z-index:5;height:30px;display:flex;align-items:center;gap:12px;
+  padding:0 10px;background:var(--hd);border-bottom:1px solid var(--line)}
+#bar b{font-size:11px;letter-spacing:.02em;white-space:nowrap}
+.st{font-size:10.5px;color:var(--faint);white-space:nowrap}
+.st i{font-style:normal;display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--faint);margin-right:4px;vertical-align:1px}
+.st.ok i{background:var(--green)} .st.warn i{background:var(--orange)} .st.err i{background:var(--red)}
+.sp{flex:1}
+button{font:inherit;color:var(--dim);background:#20242c;border:1px solid transparent;border-radius:5px;
+  padding:2px 7px;font-size:11px;cursor:pointer;white-space:nowrap}
+button:hover{background:#282d37;color:var(--fg)}
+button.on{background:#2b3646;color:#fff}
+main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.hd{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--hd);
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+.hd h2{margin:0;font-size:11.5px;font-weight:600;letter-spacing:.02em;color:#cfd6e0;white-space:nowrap}
+.hd .chips{display:flex;gap:3px;flex-wrap:wrap}
+.hd .chips.right{margin-left:auto}
+.zb{display:flex;gap:3px;margin-left:auto}
+.zb button{width:24px;padding:2px 0;text-align:center;font-size:12px;line-height:1.1}
+.hint{font-size:10px;color:#48505d;white-space:nowrap}
+.lg{display:flex;gap:14px;padding:6px 10px 0;font-size:10.5px;color:var(--dim);flex-wrap:wrap;align-items:center}
+.lg span{display:inline-flex;align-items:center;gap:5px}
+.lg .k{display:inline-block;width:15px;border-top:2px solid;border-radius:2px;height:0}
+.lg .k.d{border-top-style:dashed}
+.lg .k.t{border-top-style:dotted}
+.cv{display:block;width:100%;touch-action:none;cursor:crosshair}
+#cvA{height:250px} #cvB{height:250px} #cvP{height:104px} #cvF{height:300px}
+.foot{padding:4px 10px 8px;font-size:10.5px;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap}
+.foot b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.foot .up{color:var(--green)} .foot .dn{color:var(--red)}
+.panel{padding:6px 10px 9px;border-top:1px solid var(--line);display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:5px 16px;font-size:10.5px;color:var(--dim)}
+.panel .kv{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dotted #1e232b;padding-bottom:2px}
+.panel .kv span:last-child{color:#cfd6e0;font-variant-numeric:tabular-nums;text-align:right}
+.badges{display:flex;gap:4px;flex-wrap:wrap;grid-column:1/-1;padding-top:2px}
+.badge{font-size:9.5px;padding:1px 5px;border-radius:4px;background:#1b2028;color:#5d6675;border:1px solid #232a34}
+.badge.ok{color:#39c98a;border-color:#204434;background:#141f1b}
+.badge.no{color:#f0605f;border-color:#42262a;background:#1f1517}
+.q{display:flex;align-items:baseline;gap:10px;padding:8px 10px 2px;flex-wrap:wrap}
+.q .sym{font-weight:700;font-size:14px;color:#eaeef5}
+.q .nm{font-size:10.5px;color:var(--faint)}
+.q .px{font-size:20px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.q .ch{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.q .up{color:var(--green)} .q .dn{color:var(--red)}
+.q .rows{margin-left:auto;display:flex;gap:12px;font-size:10.5px;color:var(--dim);flex-wrap:wrap}
+.q .rows b{color:#cfd6e0;font-weight:600;font-variant-numeric:tabular-nums}
+#tip{position:fixed;z-index:40;pointer-events:none;background:rgba(12,14,19,.96);
+  border:1px solid #2c323d;border-radius:6px;padding:6px 8px;font-size:10.5px;line-height:1.5;
+  color:#dfe3ea;box-shadow:0 6px 22px rgba(0,0,0,.5);display:none;white-space:nowrap}
+#tip i{font-style:normal;display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px}
+#tip .r{display:flex;justify-content:space-between;gap:14px}
+#tip .d{color:#7d8695;font-variant-numeric:tabular-nums}
+@media(min-width:1180px){
+  main{grid-template-columns:1fr 1fr}
+  #c-fut{grid-column:1 / -1}
+}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <b>KOSPI200 · 선물 · 핵심 뷰</b>
+  <span class="st" id="stK"><i></i>KOSPI —</span>
+  <span class="st" id="stF"><i></i>선물 —</span>
+  <span class="sp"></span>
+  <button id="refresh" title="지금 다시 불러오기 (r)">새로고침</button>
+</div>
+
+<main>
+
+  <!-- 1. KOSPI INTRADAY TRACK -->
+  <section class="card" id="c-intra">
+    <div class="hd">
+      <h2>KOSPI200 · INTRADAY TRACK</h2>
+      <div class="chips" id="chWinA"></div>
+      <div class="chips" id="chModeA"></div>
+      <div class="zb" data-zc="cvA">
+        <button data-z="out" title="축소 (−)">−</button>
+        <button data-z="in" title="확대 (+)">+</button>
+        <button data-z="reset" title="원래 창으로 (더블클릭)">⤢</button>
+      </div>
+    </div>
+    <div class="lg">
+      <span><i class="k" style="border-color:#3d7bfd"></i>실측 <b id="lgResA" style="color:#5d6675;font-weight:400"></b></span>
+      <span><i class="k d" style="border-color:#f0a24a"></i>RAW · 10분 목표</span>
+      <span><i class="k t" style="border-color:#39c98a"></i>CAL · 1분 보정</span>
+      <span class="hint" style="margin-left:auto">휠 확대 · 드래그 이동 · 더블클릭 리셋</span>
+    </div>
+    <canvas class="cv" id="cvA" height="250"></canvas>
+    <div class="foot" id="footA"></div>
+  </section>
+
+  <!-- 2. KOSPI 3-TRACK -->
+  <section class="card" id="c-track">
+    <div class="hd">
+      <h2>KOSPI200 · 3-TRACK</h2>
+      <div class="chips" id="chWinB"></div>
+      <div class="zb" data-zc="cvB">
+        <button data-z="out" title="축소 (−)">−</button>
+        <button data-z="in" title="확대 (+)">+</button>
+        <button data-z="reset" title="원래 창으로 (더블클릭)">⤢</button>
+      </div>
+    </div>
+    <div class="lg">
+      <span><i class="k" style="border-color:#3d7bfd"></i>공식 실측</span>
+      <span><i class="k d" style="border-color:#f0a24a"></i>RAW · 10분 목표</span>
+      <span><i class="k t" style="border-color:#39c98a"></i>CAL · 1분 목표</span>
+      <span style="color:#5d6675;border-top:1px dashed #5d6675;height:0;width:15px;display:inline-block"></span>
+      <span style="margin-left:-8px">발행가 기준선</span>
+    </div>
+    <canvas class="cv" id="cvB" height="250"></canvas>
+    <div class="foot" id="footB"></div>
+    <div class="panel" id="panelK"></div>
+  </section>
+
+  <!-- 3. PATH strip -->
+  <section class="card" id="c-path" style="grid-column:1 / -1">
+    <div class="hd">
+      <h2>PATH · 경로 <span id="pathMeta" style="color:#5d6675;font-weight:400"></span></h2>
+      <div class="zb" data-zc="cvP">
+        <button data-z="out" title="축소 (−)">−</button>
+        <button data-z="in" title="확대 (+)">+</button>
+        <button data-z="reset" title="원래 창으로 (더블클릭)">⤢</button>
+      </div>
+    </div>
+    <canvas class="cv" id="cvP" height="104"></canvas>
+    <div class="foot" id="footP"></div>
+  </section>
+
+  <!-- 4. US FUTURES -->
+  <section class="card" id="c-fut">
+    <div class="hd">
+      <h2>US FUTURES</h2>
+      <div class="chips" id="chSym"></div>
+      <div class="chips" id="chIv"></div>
+      <div class="chips" id="chModeF"></div>
+      <div class="zb" data-zc="cvF">
+        <button data-z="out" title="축소 (−)">−</button>
+        <button data-z="in" title="확대 (+)">+</button>
+        <button data-z="reset" title="원래 창으로 (더블클릭)">⤢</button>
+      </div>
+    </div>
+    <div class="q" id="qRow"></div>
+    <div class="lg">
+      <span class="hint">휠 확대 · 드래그 이동 · 더블클릭 리셋 · 봉 모드는 구간에서 OHLC 를 직접 집계</span>
+    </div>
+    <canvas class="cv" id="cvF" height="300"></canvas>
+    <div class="foot" id="footF"></div>
+  </section>
+
+</main>
+
+<div id="tip"></div>
+
+<script>
+"use strict";
+/* =========================================================================
+   핵심 뷰 — 세 대시보드의 필요한 부분만 한 페이지에서 직접 그린다.
+   iframe 0개 · 외부 번들 0개 · 타이머는 보이는 동안에만.
+
+   이번 개정(상세 + 확대/축소)
+   - 모든 차트가 개별 확대/축소: 휠·핀치 확대, 드래그 이동, 더블클릭·⤢ 리셋, ± 버튼
+   - 잘라 쓰지 않는다: KOSPI 실측은 1초 틱 원본(수천 점)을 그대로 들고 있다가
+     화면 폭 단위로 min/max 데시메이션 → 확대하면 그 구간의 실제 디테일이 나온다
+   - 봉(candle) 모드: 구간에서 OHLC 를 직접 집계(선물 일봉은 원본 OHLC)
+   - 구간 고가/저가/평균/표준편차/변동, 최소·최대 마커와 시간 라벨
+   - 예측 계약 상세 패널(발행ID·만기·보정식·잔차·불변식 배지·해시)
+   ========================================================================= */
+
+var KOSPI_URL = "https://kospi200-live-primary.vicious130510.chatgpt.site/api/live";
+var ENDPOINT_URL = "https://moojunp.github.io/futures-dashboard/endpoint.json";
+var KOSPI_MS = 20000;
+var QUOTE_MS = 15000;
+var CHART_MS = 60000;
+var WINS = [[10,"10분"],[30,"30분"],[60,"1시간"],[180,"3시간"],[0,"전체"]];
+var MODES = [["line","선"],["candle","봉"]];
+var FUT_SYMS = [["ES=F","ES"],["NQ=F","NQ"],["YM=F","YM"],["VIX=F","VX"]];
+var FUT_IVS = [["1","1분"],["5","5분"],["15","15분"],["30","30분"],["60","60분"],["1d","1일"]];
+var MIN_SPAN = 20000;   // 확대 하한 20초
+
+var S = {
+  kospi: { snap: null, route: 0, at: 0, err: "" },
+  fut: { base: "", sym: "ES=F", iv: "1", quote: null, chart: null, at: 0, err: "" },
+  ch: {}   // 캔버스별 상태: {span, view:{t0,t1}|null, mode:'line'|'candle'}
+};
+
+var T = { kospi: 0, quote: 0, chart: 0 };
+
+/* ---------- 작은 도구 ---------- */
+function $(s){ return document.querySelector(s); }
+var KST = { timeZone: "Asia/Seoul", hour12: false, hour: "2-digit", minute: "2-digit" };
+var KSTS = { timeZone: "Asia/Seoul", hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" };
+var ET  = { timeZone: "America/New_York", hour12: false, hour: "2-digit", minute: "2-digit" };
+function hhmm(ms, tz){ return new Date(ms).toLocaleTimeString("ko-KR", tz); }
+function hhmmss(ms){ return new Date(ms).toLocaleTimeString("ko-KR", KSTS); }
+function f2(v){ return (v==null||!isFinite(v)) ? "—" : v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fp(v, d){ return (v==null||!isFinite(v)) ? "—" : Number(v).toFixed(d==null?3:d); }
+function sgn(v, d){ return (v==null||!isFinite(v)) ? "—" : (v>0?"+":"") + Number(v).toFixed(d==null?2:d); }
+function ago(ms){ var s = Math.round((Date.now()-ms)/1000); return s<60 ? s+"초 전" : Math.round(s/60)+"분 전"; }
+function pct(v){ return (v==null||!isFinite(v)) ? "—" : (v>0?"+":"") + v.toFixed(2) + "%"; }
+
+/* ---------- 캔버스 ---------- */
+function fit(cv){
+  var dpr = Math.min(2, window.devicePixelRatio || 1);
+  var r = cv.getBoundingClientRect();
+  var w = Math.max(120, Math.round(r.width)), h = Math.max(40, Math.round(r.height));
+  if (cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)) {
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  }
+  var c = cv.getContext("2d");
+  c.setTransform(dpr,0,0,dpr,0,0);
+  return { c: c, w: w, h: h };
+}
+function niceStep(raw){
+  if (!(raw>0)) return 1;
+  var p = Math.pow(10, Math.floor(Math.log(raw)/Math.LN10)), n = raw/p;
+  var m = n<1.5?1 : n<3?2 : n<7?5 : 10;
+  return m*p;
+}
+
+/* ---------- 차트 상태 ---------- */
+function chState(key, defSpan){
+  var st = S.ch[key];
+  if (!st) st = S.ch[key] = { span: defSpan==null?0:defSpan, view: null, mode: "line" };
+  return st;
+}
+function extents(series){
+  var x0=Infinity,x1=-Infinity;
+  for (var i=0;i<series.length;i++){
+    var p = series[i].pts || series[i].ohlc || [];
+    if (!p.length) continue;
+    if (p[0][0]<x0) x0=p[0][0];
+    if (p[p.length-1][0]>x1) x1=p[p.length-1][0];
+  }
+  return (x0<x1) ? [x0,x1] : null;
+}
+function slice(pts, t0, t1){
+  if (!pts || !pts.length) return [];
+  var out=[], i, started=false;
+  for (i=0;i<pts.length;i++){
+    if (!started) {
+      if (pts[i][0] >= t0) { if (i) out.push(pts[i-1]); started=true; }
+      else if (i === pts.length-1) return [pts[i]];
+      else continue;
+    }
+    if (started) { out.push(pts[i]); if (pts[i][0] > t1) break; }
+  }
+  return out;
+}
+function decimate(pts, X, Y){
+  var out = [], cur = null;
+  function flush(){
+    if (!cur) return;
+    var a = [cur.c, cur.min], b = [cur.c, cur.max];
+    var prev = out.length ? out[out.length-1][1] : null;
+    if (prev !== null && Math.abs(prev-cur.max) < Math.abs(prev-cur.min)) { out.push(b); out.push(a); }
+    else { out.push(a); out.push(b); }
+    cur = null;
+  }
+  for (var i=0;i<pts.length;i++){
+    var px = X(pts[i][0]), py = Y(pts[i][1]), col = Math.round(px);
+    if (!cur || col !== cur.c) { flush(); cur = { c: col, min: py, max: py }; }
+    else { if (py < cur.min) cur.min = py; if (py > cur.max) cur.max = py; }
+  }
+  flush();
+  return out;
+}
+function bucketOHLC(pts, ms){
+  var out = [], cur = null, b;
+  for (var i=0;i<pts.length;i++){
+    var t = pts[i][0], v = pts[i][1];
+    b = Math.floor(t/ms)*ms;
+    if (!cur || cur.t !== b) { cur = { t:b, o:v, h:v, l:v, c:v }; out.push(cur); }
+    else { if (v>cur.h) cur.h=v; if (v<cur.l) cur.l=v; cur.c=v; }
+  }
+  return out;
+}
+
+/* ---------- 그리기 ---------- */
+function draw(cv, spec){
+  var g = fit(cv), c = g.c, W = g.w, H = g.h;
+  c.clearRect(0,0,W,H);
+
+  var padL = 54, padR = 84, padT = 10, padB = 17;
+  if (spec.slim) { padT = 6; padB = 14; padL = 50; padR = 80; }
+  var iw = Math.max(20, W-padL-padR), ih = Math.max(20, H-padT-padB);
+
+  var series = (spec.series||[]).filter(function(s){ return (s.pts && s.pts.length) || (s.ohlc && s.ohlc.length); });
+  var refs = spec.refs || [];
+  var ext = extents(series);
+  if (!ext || series.length === 0) {
+    c.fillStyle = "#5d6675"; c.font = "11px system-ui,sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText(spec.empty || "데이터 대기…", W/2, H/2);
+    cv._geo = null; return;
+  }
+
+  var st = chState(spec.key);
+  var t0, t1;
+  var lastT = ext[1];
+  if (st.view) {
+    t0 = Math.max(st.view.t0, ext[0]);
+    t1 = Math.min(st.view.t1, ext[1]);
+    if (!(t1 - t0 >= 1000)) { st.view = null; t0 = ext[0]; t1 = ext[1]; }
+  }
+  if (!st.view) {
+    if (st.span) { t0 = Math.max(ext[0], lastT - st.span*60000); t1 = lastT; }
+    else { t0 = ext[0]; t1 = ext[1]; }
+  }
+  if (!(t1 > t0)) t1 = t0 + 60000;
+
+  /* 보이는 점만으로 y 범위 (확대하면 세로도 같이 붙는다 = 디테일) */
+  var y0 = Infinity, y1 = -Infinity, visTotal = 0;
+  var visCache = [];
+  for (var i=0;i<series.length;i++){
+    var se = series[i];
+    var vp = se.ohlc ? se.ohlc : slice(se.pts, t0, t1);
+    visCache.push(vp);
+    visTotal += vp.length;
+    for (var j=0;j<vp.length;j++){
+      var p = vp[j];
+      if (p[0] < t0-1 || p[0] > t1+1) continue;
+      var lo = se.ohlc ? p[3] : p[1], hi = se.ohlc ? p[2] : p[1];
+      if (lo < y0) y0 = lo;
+      if (hi > y1) y1 = hi;
+    }
+  }
+  for (var k=0;k<refs.length;k++){ if (refs[k].y<y0) y0=refs[k].y; if (refs[k].y>y1) y1=refs[k].y; }
+  if (!isFinite(y0) || !isFinite(y1)) { y0 = 0; y1 = 1; }
+  if (!(y1>y0)) { y0 -= 1; y1 += 1; }
+  var padY = (y1-y0)*0.08; y0 -= padY; y1 += padY;
+
+  function X(v){ return padL + (v-t0)/(t1-t0)*iw; }
+  function Y(v){ return padT + (1-(v-y0)/(y1-y0))*ih; }
+
+  /* y 눈금 */
+  var nt = ih < 120 ? 2 : 4;
+  var step = niceStep((y1-y0)/nt), dec = step<0.5 ? 3 : step<1 ? 2 : step<10 ? 2 : 1;
+  c.font = "9.5px system-ui,sans-serif"; c.textAlign = "right"; c.textBaseline = "middle";
+  for (var v = Math.ceil(y0/step)*step; v < y1; v += step) {
+    var yy = Y(v);
+    c.strokeStyle = "#1e232b"; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(padL, yy+.5); c.lineTo(padL+iw, yy+.5); c.stroke();
+    c.fillStyle = "#4f5866";
+    c.fillText(v.toFixed(dec), padL-6, yy);
+  }
+
+  /* x 눈금 */
+  c.textAlign = "center"; c.textBaseline = "top";
+  for (var t=0;t<=5;t++){
+    var xv = t0 + (t1-t0)*t/5, xx = X(xv);
+    c.strokeStyle = (t===0||t===5) ? "transparent" : "#1b2027";
+    c.beginPath(); c.moveTo(xx+.5, padT); c.lineTo(xx+.5, padT+ih); c.stroke();
+    c.fillStyle = "#4f5866";
+    c.fillText(spec.xfmt ? spec.xfmt(xv) : String(t), Math.min(Math.max(xx,padL+16), padL+iw-16), padT+ih+4);
+  }
+
+  /* 기준선 */
+  for (var r2=0;r2<refs.length;r2++){
+    var ref = refs[r2];
+    if (!isFinite(ref.y)) continue;
+    var ry = Y(ref.y);
+    if (ry < padT-1 || ry > padT+ih+1) continue;
+    c.save();
+    c.strokeStyle = ref.color; c.lineWidth = 1; c.globalAlpha = .55;
+    if (c.setLineDash) c.setLineDash([4,4]);
+    c.beginPath(); c.moveTo(padL, ry+.5); c.lineTo(padL+iw, ry+.5); c.stroke();
+    c.restore();
+  }
+
+  /* 시리즈 */
+  c.save();
+  c.beginPath(); c.rect(padL, padT-6, iw, ih+12); c.clip();
+
+  for (var s2=0;s2<series.length;s2++){
+    var se = series[s2], vpts = visCache[s2];
+    if (!vpts.length) continue;
+
+    if (se.ohlc) {
+      /* 캔들 */
+      var bw = Math.max(1, iw / Math.max(1, vpts.length) * 0.66);
+      for (var q=0;q<vpts.length;q++){
+        var cd = vpts[q];
+        if (cd[0] < t0 || cd[0] > t1) continue;
+        var cx = X(cd[0]);
+        var up = cd[4] >= cd[1];
+        c.strokeStyle = c.fillStyle = up ? (se.up || "#3d7bfd") : (se.down || "#f0605f");
+        c.lineWidth = 1;
+        c.beginPath(); c.moveTo(cx+.5, Y(cd[2])); c.lineTo(cx+.5, Y(cd[3])); c.stroke();
+        var yo = Y(cd[1]), yc = Y(cd[4]);
+        var top = Math.min(yo,yc), hgt = Math.max(1, Math.abs(yc-yo));
+        c.fillRect(cx-bw/2, top, bw, hgt);
+      }
+      continue;
+    }
+
+    var poly = decimate(vpts, X, Y);
+    if (poly.length < 2 && vpts.length === 1) poly = [[X(vpts[0][0]), Y(vpts[0][1])]];
+    if (poly.length < 2) continue;
+
+    c.beginPath();
+    c.moveTo(poly[0][0], poly[0][1]);
+    for (var m=1;m<poly.length;m++) c.lineTo(poly[m][0], poly[m][1]);
+
+    if (se.fill && poly.length > 2) {
+      c.save();
+      c.lineTo(poly[poly.length-1][0], padT+ih);
+      c.lineTo(poly[0][0], padT+ih);
+      c.closePath();
+      c.fillStyle = se.fill; c.fill();
+      c.restore();
+      c.beginPath();
+      c.moveTo(poly[0][0], poly[0][1]);
+      for (var m2=1;m2<poly.length;m2++) c.lineTo(poly[m2][0], poly[m2][1]);
+    }
+
+    c.strokeStyle = se.color; c.lineWidth = se.w || 1.6;
+    c.lineJoin = "round"; c.lineCap = "round";
+    if (c.setLineDash) c.setLineDash(se.dash || []);
+    c.stroke();
+    if (c.setLineDash) c.setLineDash([]);
+
+    if (se.dot && se.pts) {
+      var lp = vpts[vpts.length-1];
+      if (lp && lp[0] <= t1+1) {
+        c.beginPath(); c.arc(X(lp[0]), Y(lp[1]), 2.6, 0, 6.2832);
+        c.fillStyle = se.color; c.fill();
+      }
+    }
+  }
+  c.restore();
+
+  /* 구간 최소·최대 마커 (선 시리즈의 주 시리즈만) */
+  if (spec.mark !== false) {
+    var main = null;
+    for (var mi=0;mi<series.length;mi++) if (!series[mi].ohlc && !series[mi].dash && series[mi].pts) { main = { se: series[mi], v: visCache[mi] }; break; }
+    if (main && main.v.length > 2) {
+      var mn = null, mx = null;
+      for (var mi2=0;mi2<main.v.length;mi2++){
+        var pv = main.v[mi2];
+        if (pv[0] < t0 || pv[0] > t1) continue;
+        if (!mn || pv[1] < mn[1]) mn = pv;
+        if (!mx || pv[1] > mx[1]) mx = pv;
+      }
+      [[mx,"#39c98a","고"], [mn,"#f0605f","저"]].forEach(function(pair){
+        var pt = pair[0]; if (!pt) return;
+        var px = X(pt[0]), py = Y(pt[1]);
+        if (px < padL-1 || px > padL+iw+1) return;
+        c.save();
+        c.beginPath(); c.arc(px, py, 2.4, 0, 6.2832);
+        c.fillStyle = pair[1]; c.fill();
+        c.font = "9px system-ui,sans-serif"; c.textAlign = "center"; c.textBaseline = "bottom";
+        var lbl = pair[2] + " " + f2(pt[1]);
+        var ly = py - 5; if (ly < padT+10) { c.textBaseline = "top"; ly = py + 6; }
+        var tw = c.measureText(lbl).width;
+        c.fillStyle = "rgba(14,16,21,.8)";
+        c.fillRect(px - tw/2 - 2, ly - (c.textBaseline === "bottom" ? 10 : 0), tw + 4, 11);
+        c.fillStyle = pair[1];
+        c.fillText(lbl, px, ly);
+        c.restore();
+      });
+    }
+  }
+
+  /* 오른쪽 값 칩 */
+  var chips = [];
+  for (var s3=0;s3<series.length;s3++){
+    var sr = series[s3];
+    if (!sr.tag) continue;
+    var vv = visCache[s3];
+    if (!vv.length) continue;
+    var last = vv[vv.length-1];
+    if (last[0] < t0 || last[0] > t1+1) continue;
+    chips.push({ y: Y(sr.ohlc ? last[4] : last[1]), text: sr.tag, color: sr.color });
+  }
+  for (var r3=0;r3<refs.length;r3++){
+    var rf = refs[r3];
+    if (!rf.label) continue;
+    var ry2 = Y(rf.y);
+    if (ry2 < padT-1 || ry2 > padT+ih+1) continue;
+    chips.push({ y: ry2, text: rf.label, color: rf.color, faint: true });
+  }
+  chips.sort(function(a,b){ return a.y-b.y; });
+  for (var ci=1;ci<chips.length;ci++) if (chips[ci].y - chips[ci-1].y < 14) chips[ci].y = chips[ci-1].y + 14;
+  var over = chips.length ? (chips[chips.length-1].y - (padT+ih)) : 0;
+  if (over > 0) for (var cj=0;cj<chips.length;cj++) chips[cj].y -= over;
+  c.textAlign = "left"; c.textBaseline = "middle"; c.font = "9.5px system-ui,sans-serif";
+  for (var ck=0;ck<chips.length;ck++){
+    var chp = chips[ck];
+    var tw2 = c.measureText(chp.text).width + 10;
+    var cy = Math.min(Math.max(chp.y, padT+6), padT+ih-6);
+    c.globalAlpha = chp.faint ? .85 : 1;
+    c.fillStyle = chp.color + "26";
+    c.beginPath();
+    if (c.roundRect) c.roundRect(padL+iw+3, cy-7, tw2, 14, 3); else c.rect(padL+iw+3, cy-7, tw2, 14);
+    c.fill();
+    c.fillStyle = chp.color;
+    c.fillText(chp.text, padL+iw+8, cy);
+    c.globalAlpha = 1;
+  }
+
+  cv._geo = {
+    key: spec.key, spec: spec, t0:t0, t1:t1, y0:y0, y1:y1,
+    padL:padL, padT:padT, iw:iw, ih:ih, W:W, H:H,
+    vis: visCache, series: series
+  };
+}
+
+/* ---------- 확대 / 이동 ---------- */
+function redraw(cv){ if (cv._render) cv._render(); }
+
+function zoomAt(cv, factor, frac){
+  var g = cv._geo; if (!g) return;
+  var st = chState(g.key);
+  var span = (g.t1-g.t0) * factor;
+  var a = frac==null ? 0.5 : frac;
+  var at = g.t0 + (g.t1-g.t0)*a;
+  var t0 = at - span*a, t1 = at + span*(1-a);
+  if (t1-t0 < MIN_SPAN) {
+    var mid = (t0+t1)/2; t0 = mid - MIN_SPAN/2; t1 = mid + MIN_SPAN/2;
+  }
+  st.view = { t0:t0, t1:t1 };
+  redraw(cv);
+}
+function panBy(cv, dtMs){
+  var g = cv._geo; if (!g) return;
+  var st = chState(g.key);
+  st.view = { t0: g.t0 + dtMs, t1: g.t1 + dtMs };
+  redraw(cv);
+}
+function resetView(cv){
+  var g = cv._geo; if (!g) { var st0 = S.ch[cv._key]; if (st0) st0.view = null; return; }
+  var st = chState(g.key);
+  st.view = null;
+  redraw(cv);
+}
+
+var rafMove = 0;
+function bindZoom(cv, key, render){
+  cv._key = key;
+  cv._render = render;
+  var drag = null, pts = new Map();
+
+  cv.addEventListener("wheel", function(e){
+    e.preventDefault();
+    var g = cv._geo; if (!g) return;
+    var r = cv.getBoundingClientRect();
+    var frac = Math.min(1, Math.max(0, (e.clientX - r.left - g.padL) / g.iw));
+    zoomAt(cv, e.deltaY > 0 ? 1.25 : 0.8, frac);
+  }, { passive: false });
+
+  cv.addEventListener("dblclick", function(e){ e.preventDefault(); resetView(cv); });
+
+  cv.addEventListener("pointerdown", function(e){
+    cv.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (pts.size === 1) drag = { x:e.clientX, t0: cv._geo ? cv._geo.t0 : 0, t1: cv._geo ? cv._geo.t1 : 0, moved:false };
+    if (pts.size === 2) { drag = null; pinchStart(); }
+  });
+
+  var pinch = null;
+  function twoPts(){ var a = []; pts.forEach(function(v){ a.push(v); }); return a; }
+  function pinchStart(){
+    var a = twoPts(); if (a.length < 2 || !cv._geo) return;
+    pinch = { d: Math.abs(a[0].x-a[1].x) + 1, t0: cv._geo.t0, t1: cv._geo.t1 };
+  }
+
+  cv.addEventListener("pointermove", function(e){
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (pinch && pts.size === 2 && cv._geo) {
+      var a = twoPts();
+      var d = Math.abs(a[0].x-a[1].x) + 1;
+      var k = pinch.d / d;
+      var mid = (pinch.t0 + pinch.t1)/2, span = (pinch.t1 - pinch.t0) * k;
+      if (span < MIN_SPAN) span = MIN_SPAN;
+      chState(cv._geo.key).view = { t0: mid - span/2, t1: mid + span/2 };
+      schedule(); return;
+    }
+    if (drag && pts.size === 1) {
+      var dx = e.clientX - drag.x;
+      if (Math.abs(dx) < 3) { hover(e); return; }
+      drag.moved = true;
+      var span = drag.t1 - drag.t0;
+      var dt = -dx / Math.max(1, (cv._geo ? cv._geo.iw : 400)) * span;
+      chState(cv._geo.key).view = { t0: drag.t0 + dt, t1: drag.t1 + dt };
+      hideTip();
+      schedule();
+      return;
+    }
+    if (!drag) hover(e);
+  });
+
+  function endPtr(e){
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0) drag = null;
+  }
+  cv.addEventListener("pointerup", endPtr);
+  cv.addEventListener("pointercancel", endPtr);
+  cv.addEventListener("pointerleave", function(e){
+    endPtr(e); hideTip();
+    if (cv._geo) draw(cv, cv._geo.spec);
+  });
+
+  function schedule(){
+    if (rafMove) return;
+    rafMove = requestAnimationFrame(function(){ rafMove = 0; redraw(cv); });
+  }
+
+  function hover(e){
+    var g = cv._geo; if (!g) return;
+    var r = cv.getBoundingClientRect();
+    var mx = e.clientX - r.left, my = e.clientY - r.top;
+    if (mx < g.padL-2 || mx > g.padL+g.iw+2 || my < g.padT-4 || my > g.padT+g.ih+4) { hideTip(); return; }
+    var xv = g.t0 + (mx-g.padL)/g.iw*(g.t1-g.t0);
+    var ctx = cv.getContext("2d");
+    draw(cv, g.spec);
+    g = cv._geo; if (!g) return;
+
+    ctx.save();
+    ctx.strokeStyle = "#3a4250"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(mx+.5, g.padT); ctx.lineTo(mx+.5, g.padT+g.ih); ctx.stroke();
+
+    var yv = g.y1 - (my-g.padT)/g.ih*(g.y1-g.y0);
+    if (my >= g.padT && my <= g.padT+g.ih) {
+      ctx.strokeStyle = "#2a3140";
+      if (ctx.setLineDash) ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(g.padL, my+.5); ctx.lineTo(g.padL+g.iw, my+.5); ctx.stroke();
+      if (ctx.setLineDash) ctx.setLineDash([]);
+      var yl = yv.toFixed(2);
+      ctx.font = "9.5px system-ui,sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      var lw = ctx.measureText(yl).width + 8;
+      ctx.fillStyle = "#2b3646";
+      ctx.fillRect(g.padL-54, my-7, lw, 14);
+      ctx.fillStyle = "#cfd6e0";
+      ctx.fillText(yl, g.padL-50, my);
+    }
+
+    var rows = [];
+    for (var i=0;i<g.series.length;i++){
+      var se = g.series[i], arr = se.ohlc || se.pts;
+      if (!arr || !arr.length) continue;
+      var best = null, bd = Infinity;
+      for (var j=0;j<arr.length;j++){
+        var d = Math.abs(arr[j][0]-xv);
+        if (d < bd) { bd = d; best = arr[j]; }
+        else if (arr[j][0] > xv && bd < 1e12) break;
+      }
+      if (!best) continue;
+      var px = g.padL + (best[0]-g.t0)/(g.t1-g.t0)*g.iw;
+      var lastV = se.ohlc ? best[4] : best[1];
+      var py = g.padT + (1-(lastV-g.y0)/(g.y1-g.y0))*g.ih;
+      if (!se.ohlc && px >= g.padL-1 && px <= g.padL+g.iw+1) {
+        ctx.beginPath(); ctx.arc(px, py, 3, 0, 6.2832);
+        ctx.fillStyle = se.color; ctx.fill();
+        ctx.strokeStyle = "#0e1015"; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      rows.push({
+        color: se.color, label: se.name || "",
+        v: lastV,
+        ohlc: se.ohlc ? best : null,
+        d: se.baseV != null ? (lastV - se.baseV) : null
+      });
+    }
+    ctx.restore();
+    if (!rows.length) { hideTip(); return; }
+
+    var html = "<div style='color:#8b94a3;margin-bottom:2px'>" +
+      (g.spec.tipTime ? g.spec.tipTime(xv) : new Date(xv).toLocaleString("ko-KR")) +
+      "<span style='margin-left:8px;color:#48505d'>" + g.spec.key + "</span></div>";
+    rows.forEach(function(rw){
+      var right = rw.ohlc
+        ? ("O " + f2(rw.ohlc[1]) + " H " + f2(rw.ohlc[2]) + " L " + f2(rw.ohlc[3]) + " C " + f2(rw.ohlc[4]))
+        : f2(rw.v);
+      html += "<div class='r'><span><i style='background:" + rw.color + "'></i>" +
+        (rw.label ? rw.label + " " : "") + "</span><span>" + right +
+        (rw.d != null ? " <span class='d'>(" + sgn(rw.d) + ")</span>" : "") + "</span></div>";
+    });
+    showTip(html, e.clientX, e.clientY);
+  }
+
+}
+function showTip(html, cx, cy){
+  var el = $("#tip");
+  el.innerHTML = html; el.style.display = "block";
+  var w = el.offsetWidth, h = el.offsetHeight;
+  var x = cx + 14, y = cy - h - 12;
+  if (x + w > window.innerWidth - 8) x = cx - w - 14;
+  if (y < 4) y = cy + 18;
+  el.style.left = x + "px"; el.style.top = y + "px";
+}
+function hideTip(){ $("#tip").style.display = "none"; }
+
+/* ---------- 칩 ---------- */
+function chips(el, items, cur, onPick){
+  el.innerHTML = "";
+  items.forEach(function(it){
+    var b = document.createElement("button");
+    b.textContent = it[1];
+    if (it[0] === cur) b.className = "on";
+    b.onclick = function(){
+      Array.prototype.forEach.call(el.children, function(x){ x.className = ""; });
+      b.className = "on";
+      onPick(it[0]);
+    };
+    el.appendChild(b);
+  });
+}
+
+/* ---------- 통계 ---------- */
+function stats(vals){
+  var n = vals.length; if (!n) return null;
+  var mn = Infinity, mx = -Infinity, sum = 0;
+  for (var i=0;i<n;i++){ var v = vals[i]; if (v<mn) mn=v; if (v>mx) mx=v; sum+=v; }
+  var mean = sum/n, ss = 0;
+  for (var j=0;j<n;j++){ var d = vals[j]-mean; ss += d*d; }
+  return { n:n, min:mn, max:mx, mean:mean, sd:Math.sqrt(ss/n) };
+}
+
+/* ---------- KOSPI ---------- */
+function kospiTracks(){
+  var s = S.kospi.snap;
+  if (!s || !s.chart || !s.chart.tracks) return null;
+  var t = s.chart.tracks;
+  var actual = (t.actual || []).slice();
+  var cont = t.continuous_actual || [];
+  var lastMs = actual.length ? actual[actual.length-1][0] : 0;
+  for (var i=0;i<cont.length;i++) if (cont[i][0] > lastMs) actual.push(cont[i]);
+  return {
+    actual: actual,
+    raw: t.raw || [],
+    cal: t.calibrated || [],
+    active: (s.chart.prediction_contract || {}).active || null,
+    pc: s.chart.prediction_contract || {},
+    snap: s,
+    updated: s.updated_at_kst || "",
+    mode: s.mode || ""
+  };
+}
+function visStats(pts, t0, t1){
+  var out = [];
+  for (var i=0;i<pts.length;i++) if (pts[i][0] >= t0 && pts[i][0] <= t1) out.push(pts[i][1]);
+  return out;
+}
+
+function renderIntra(){
+  var k = kospiTracks(), cv = $("#cvA");
+  var st = chState("cvA", 30);
+  if (!k || !k.actual.length){
+    draw(cv, { key:"cvA", empty: S.kospi.snap ? "실측 데이터 없음" : "KOSPI 데이터 대기…" });
+    $("#footA").textContent = ""; $("#lgResA").textContent = ""; return;
+  }
+  var act = k.actual;
+  var candle = st.mode === "candle";
+  var series = [];
+  if (candle) {
+    var ms = pickCandleMs(cv, act[0][0], act[act.length-1][0], 1);
+    series.push({ ohlc: bucketOHLC(act, ms), color:"#3d7bfd", up:"#3d7bfd", down:"#f0605f", name:"실측", tag:"실측 " + f2(act[act.length-1][1]) });
+  } else {
+    series.push({ pts: act, color:"#3d7bfd", w:1.6, fill:"rgba(61,123,253,.07)", name:"실측",
+                  tag:"실측 " + f2(act[act.length-1][1]), baseV: act[0][1] });
+  }
+  series.push({ pts: k.raw, color:"#f0a24a", w:1.5, dash:[5,4], name:"RAW",
+                tag:"RAW " + f2(k.raw.length?k.raw[k.raw.length-1][1]:null) });
+  series.push({ pts: k.cal, color:"#39c98a", w:1.5, dash:[2,3], name:"CAL",
+                tag:"CAL " + f2(k.cal.length?k.cal[k.cal.length-1][1]:null) });
+
+  draw(cv, {
+    key: "cvA", series: series,
+    xfmt: function(ms2){ return hhmm(ms2, KST); },
+    tipTime: function(ms2){ return hhmmss(ms2) + " KST"; }
+  });
+
+  var g = cv._geo;
+  $("#lgResA").textContent = "· 1초 틱 " + act.length.toLocaleString() + "점";
+  var t0 = g ? g.t0 : act[0][0], t1 = g ? g.t1 : act[act.length-1][0];
+  var vs = visStats(act, t0, t1);
+  var s = stats(vs);
+  if (!s) { $("#footA").textContent = ""; return; }
+  var spanMin = (t1-t0)/60000;
+  var d = vs[vs.length-1] - vs[0], p = vs[0] ? d/vs[0]*100 : 0;
+  var cls = d>=0 ? "up" : "dn";
+  var hiT = 0, loT = 0;
+  for (var i=0;i<act.length;i++){
+    if (act[i][0] < t0 || act[i][0] > t1) continue;
+    if (act[i][1] === s.max) hiT = act[i][0];
+    if (act[i][1] === s.min) loT = act[i][0];
+  }
+  $("#footA").innerHTML =
+    "<span>창 <b>" + (spanMin >= 1 ? Math.round(spanMin) + "분" : Math.round(spanMin*60) + "초") + "</b>" +
+      (st.view ? " <b style='color:#3d7bfd'>확대</b>" : "") + "</span>" +
+    "<span>고 <b>" + f2(s.max) + "</b> <span style='color:#4f5866'>" + hhmm(hiT, KST) + "</span></span>" +
+    "<span>저 <b>" + f2(s.min) + "</b> <span style='color:#4f5866'>" + hhmm(loT, KST) + "</span></span>" +
+    "<span>평균 <b>" + f2(s.mean) + "</b></span>" +
+    "<span>σ <b>" + fp(s.sd,3) + "</b></span>" +
+    "<span class='" + cls + "'>변동 <b>" + sgn(d) + " (" + pct(p) + ")</b></span>" +
+    "<span class='hint'>" + vs.length.toLocaleString() + "점 · " +
+      (k.updated ? k.updated.slice(11,19) + " KST 갱신" : "") + "</span>";
+}
+
+function pickCandleMs(cv, t0, t1, base){
+  var g = cv._geo;
+  var span = g ? (g.t1-g.t0) : (t1-t0);
+  if (!(span > 0)) span = 3600000;
+  var target = span / 70;
+  var steps = [1000,2000,5000,10000,15000,30000,60000,120000,300000,600000,1800000,3600000];
+  for (var i=0;i<steps.length;i++) if (steps[i] >= target) return steps[i];
+  return 3600000;
+}
+
+function renderTrack(){
+  var k = kospiTracks(), cv = $("#cvB");
+  if (!k || !k.actual.length){
+    draw(cv, { key:"cvB", empty: S.kospi.snap ? "실측 데이터 없음" : "KOSPI 데이터 대기…" });
+    $("#footB").textContent = ""; return;
+  }
+  var act = bucketOHLC(k.actual, 60000).map(function(c){ return [c.t, c.c]; });
+  var a1 = act[act.length-1][1];
+  var rawT = k.raw.length ? k.raw[k.raw.length-1][1] : null;
+  var calT = k.cal.length ? k.cal[k.cal.length-1][1] : null;
+  draw(cv, {
+    key: "cvB",
+    series: [
+      { pts: act, color:"#3d7bfd", w:1.7, fill:"rgba(61,123,253,.06)", name:"공식 실측", tag:"실측 " + f2(a1), baseV: act[0][1] },
+      { pts: k.raw, color:"#f0a24a", w:1.4, dash:[5,4], name:"RAW·10분", tag:"RAW " + f2(rawT) },
+      { pts: k.cal, color:"#39c98a", w:1.4, dash:[2,3], name:"CAL·1분", tag:"CAL " + f2(calT) }
+    ],
+    refs: k.active && k.active.anchor_price ? [{ y:k.active.anchor_price, color:"#5d6675", label:"발행가 " + f2(k.active.anchor_price) }] : [],
+    xfmt: function(ms2){ return hhmm(ms2, KST); },
+    tipTime: function(ms2){ return hhmmss(ms2) + " KST"; }
+  });
+  function delta(v){ if (v==null) return "—"; var dd=v-a1; return "<span class='" + (dd>=0?"up":"dn") + "'>" + sgn(dd) + "</span>"; }
+  var g = cv._geo;
+  var t0 = g ? g.t0 : act[0][0], t1 = g ? g.t1 : act[act.length-1][0];
+  var s = stats(visStats(act, t0, t1));
+  $("#footB").innerHTML =
+    "<span>실측 <b>" + f2(a1) + "</b></span>" +
+    "<span>RAW <b>" + f2(rawT) + "</b> " + delta(rawT) + "</span>" +
+    "<span>CAL <b>" + f2(calT) + "</b> " + delta(calT) + "</span>" +
+    (s ? "<span>창 고/저 <b>" + f2(s.max) + "</b> / <b>" + f2(s.min) + "</b></span>" +
+         "<span>σ <b>" + fp(s.sd,3) + "</b></span>" : "") +
+    "<span class='hint'>1분 봉 " + act.length + "개" + (g ? " · 창 " + Math.round((t1-t0)/60000) + "분" : "") + "</span>";
+  renderKospiPanel(k);
+}
+
+function renderKospiPanel(k){
+  var s = k.snap || {}, a = k.active || {}, pc = k.pc || {};
+  var omc = pc.one_minute_calibration || {}, learn = omc.learning || {};
+  var inv = pc.invariants || {};
+  var src = s.source_observation || {}, adm = s.official_actual_admission || {};
+  var rd = s.prediction_readiness || {};
+  var remainMs = null;
+  if (a.horizon_end_at_kst) {
+    var he = new Date(a.horizon_end_at_kst).getTime();
+    remainMs = he - Date.now();
+  }
+  function kv(label, val, color){
+    return "<div class='kv'><span>" + label + "</span><span" + (color ? " class='" + color + "'" : "") + ">" + val + "</span></div>";
+  }
+  var html = "";
+  html += kv("모드 / seq", (s.mode || "—") + " · " + (s.seq == null ? "—" : s.seq));
+  html += kv("발행 ID", a.issuance_id ? String(a.issuance_id).replace(/^native-p0-shadow:/,"").slice(0,12) + "…" : "—");
+  html += kv("발행 / 만기", (a.calibrated_at_kst ? a.calibrated_at_kst.slice(11,19) : "—") +
+             " → " + (a.horizon_end_at_kst ? a.horizon_end_at_kst.slice(11,19) : "—"));
+  html += kv("남은 시간", remainMs == null ? "—" : (remainMs > 0 ? Math.floor(remainMs/60000) + "분 " + Math.floor(remainMs%60000/1000) + "초" : "지남"));
+  html += kv("RAW / CAL 목표", f2(a.raw_target_price) + " / " + f2(a.calibrated_target_price));
+  html += kv("보정 상태", (a.calibration_status || "—").replace(/_/g," ").toLowerCase());
+  html += kv("보정식", (a.calibration_formula_version || "—").replace(/_/g," "));
+  html += kv("1분 잔차 평균", learn.residual_mean == null ? "—" : sgn(learn.residual_mean, 4) +
+             " <span style='color:#4f5866'>(" + (learn.samples == null ? "—" : learn.samples.toLocaleString()) + "표본)</span>");
+  html += kv("실측 해상도", (k.actual.length ? "1초 틱 " + k.actual.length.toLocaleString() + "점" : "—"));
+  html += kv("스냅샷 갱신", k.updated ? k.updated.slice(11,19) + " KST" : "—");
+  html += kv("소스", (src.source_kind || "—") + (src.official_actual ? " · 공식" : ""));
+  html += kv("원장 seq / 해시", (src.journal_seq == null ? "—" : src.journal_seq) +
+             " · " + (src.record_sha256 ? String(src.record_sha256).slice(0,10) : "—"));
+  html += kv("세션", (adm.session || "—") + " · " + (adm.session_start_at ? adm.session_start_at.slice(11,16) : "—") +
+             "–" + (adm.session_end_at ? adm.session_end_at.slice(11,16) : "—"));
+  html += kv("준비 상태", rd.state || "—");
+  var badges = "";
+  [["anchor=actual", inv.active_anchor_matches_actual],
+   ["anchor=source", inv.active_anchor_matches_source_observation],
+   ["raw 불변", inv.raw_immutable],
+   ["과거 prefix 불변", inv.cal_past_prefix_immutable],
+   ["공통 horizon", inv.common_horizon],
+   ["경계 명시", inv.transition_boundary_explicit],
+   ["stale 없음", s.source_stale === false]].forEach(function(b){
+    if (b[1] === undefined) return;
+    badges += "<span class='badge " + (b[1] ? "ok" : "no") + "'>" + (b[1] ? "✓ " : "✗ ") + b[0] + "</span>";
+  });
+  html += "<div class='badges'>" + badges +
+    "<span class='badge'>" + (s.presentation_schema || "") + "</span>" +
+    "<span class='badge'>content " + (s.content_hash ? String(s.content_hash).slice(0,8) : "—") + "</span></div>";
+  $("#panelK").innerHTML = html;
+}
+
+function renderPath(){
+  var k = kospiTracks(), cv = $("#cvP");
+  if (!k || !k.raw.length){
+    draw(cv, { key:"cvP", empty: "경로 데이터 대기…" }); $("#pathMeta").textContent = ""; $("#footP").textContent = ""; return;
+  }
+  var raw = k.raw, cal = k.cal;
+  var span = (raw[raw.length-1][0] - raw[0][0])/60000;
+  $("#pathMeta").textContent = "· " + Math.round(span) + "분 · " + raw.length + "점";
+  draw(cv, {
+    key: "cvP", slim: true,
+    series: [
+      { pts: raw, color:"#f0605f", w:2, name:"RAW", tag:"→ " + f2(raw[raw.length-1][1]), baseV: raw[0][1] },
+      { pts: cal, color:"#39c98a", w:1.3, dash:[3,3], name:"CAL", tag:"CAL " + f2(cal.length?cal[cal.length-1][1]:null) }
+    ],
+    refs: [{ y: raw[0][1], color:"#5d6675", label:"시작 " + f2(raw[0][1]) }],
+    xfmt: function(ms2){ return hhmm(ms2, KST); },
+    tipTime: function(ms2){ return hhmmss(ms2) + " KST"; }
+  });
+  var s = stats(raw.map(function(p){ return p[1]; }));
+  var slope = s && span > 0 ? (raw[raw.length-1][1]-raw[0][1]) / span : 0;
+  $("#footP").innerHTML =
+    (s ? "<span>경로 고/저 <b>" + f2(s.max) + "</b> / <b>" + f2(s.min) + "</b></span>" +
+         "<span>기울기 <b>" + sgn(slope,3) + "</b> pt/분</span>" +
+         "<span>범위 <b>" + fp(s.max-s.min,3) + "</b></span>" : "") +
+    "<span class='hint'>RAW " + raw.length + "점 · CAL " + cal.length + "점 · 1분 간격</span>";
+}
+
+/* ---------- FUTURES ---------- */
+function renderFutHead(){
+  var q = S.fut.quote, el = $("#qRow");
+  if (!q || !q.ok){
+    el.innerHTML = "<span class='sym'>" + S.fut.sym.replace("=F","") + "</span>" +
+      "<span class='nm'>" + (S.fut.err ? "시세 오류: " + S.fut.err : "시세 대기…") + "</span>";
+    return;
+  }
+  var up = q.change >= 0, cls = up ? "up" : "dn";
+  el.innerHTML =
+    "<span class='sym'>" + q.symbol.replace("=F","") + "</span>" +
+    "<span class='nm'>" + (q.name || "") + "</span>" +
+    "<span class='px " + cls + "'>" + f2(q.price) + "</span>" +
+    "<span class='ch " + cls + "'>" + sgn(q.change) + " (" + pct(q.pct) + ")</span>" +
+    "<span class='rows'>" +
+      "<span>시가 <b>" + f2(q.open) + "</b></span>" +
+      "<span>고 <b>" + f2(q.high) + "</b></span>" +
+      "<span>저 <b>" + f2(q.low) + "</b></span>" +
+      "<span>기준 <b>" + f2(q.prev) + "</b></span>" +
+      "<span>지연 <b>" + (q.delay == null ? "—" : q.delay.toFixed(1) + "s") + "</b></span>" +
+      "<span style='color:#4f5866'>" + (q.tsText || "") + " · " + (q.source || "") + "</span>" +
+    "</span>";
+}
+function renderFut(){
+  var cv = $("#cvF"), chf = S.fut.chart;
+  renderFutHead();
+  var st = chState("cvF", 0);
+  var daily = S.fut.iv === "1d";
+  var candleMode = daily || st.mode === "candle";
+
+  if (!chf || !chf.points || chf.points.length < 2){
+    draw(cv, { key:"cvF", empty: S.fut.err ? "차트 오류: " + S.fut.err : "선물 차트 대기…" });
+    $("#footF").textContent = ""; return;
+  }
+  var q = S.fut.quote || {};
+  var refs = [], series = [], pts = null;
+
+  if (daily) {
+    var ohlc = chf.points.map(function(p){ return [p[0]*1000, p[1], p[2], p[3], p[4]]; });
+    var first = ohlc[Math.max(0, ohlc.length-1)][4], lastD = ohlc[ohlc.length-1][4];
+    series.push({ ohlc: ohlc.slice(-360), color:"#3d7bfd", up:"#3d7bfd", down:"#f0605f",
+                  name:"일봉", tag: f2(lastD) });
+    refs = [];
+  } else {
+    pts = chf.points.map(function(p){ return [p[0]*1000, p[1]]; });
+    pts = pts.slice(-1440);
+    if (candleMode) {
+      var ms = parseInt(S.fut.iv,10) * 60000 * 5;   /* 원본이 분봉 종가뿐이라 5배 구간으로 묶어야 OHLC 가 의미를 갖는다 */
+      if (ms < 300000) ms = 300000;
+      series.push({ ohlc: bucketOHLC(pts, ms), color:"#3d7bfd", up:"#3d7bfd", down:"#f0605f",
+                    name: "봉 " + Math.round(ms/60000) + "분", tag: f2(pts[pts.length-1][1]) });
+    } else {
+      var last = pts[pts.length-1][1], fr = pts[0][1];
+      var up = last >= fr, col = up ? "#3d7bfd" : "#f0605f";
+      series.push({ pts: pts, color: col, w:1.6, fill: up ? "rgba(61,123,253,.08)" : "rgba(240,96,95,.08)",
+                    name: "종가", tag: f2(last), baseV: fr });
+    }
+    if (isFinite(q.open)) refs.push({ y:q.open, color:"#8b94a3", label:"시가 " + f2(q.open) });
+    if (isFinite(q.high)) refs.push({ y:q.high, color:"#f0605f", label:"고 " + f2(q.high) });
+    if (isFinite(q.low))  refs.push({ y:q.low,  color:"#3d7bfd", label:"저 " + f2(q.low) });
+    if (isFinite(q.prev)) refs.push({ y:q.prev, color:"#8b94a3", label:"기준 " + f2(q.prev) });
+  }
+
+  draw(cv, {
+    key: "cvF", series: series, refs: refs,
+    xfmt: function(ms2){ return hhmm(ms2, ET); },
+    tipTime: function(ms2){ return new Date(ms2).toLocaleString("ko-KR", {timeZone:"America/New_York", month:"2-digit", day:"2-digit"}) + " " + hhmmss(ms2) + " ET"; }
+  });
+
+  var g = cv._geo;
+  var foot = [];
+  if (daily) {
+    var oc = series[0].ohlc;
+    foot.push("<span>구간 <b>" + oc.length + "일봉</b>" + (g ? " · 창 " + Math.round((g.t1-g.t0)/86400000) + "일" : "") + "</span>");
+  } else if (pts) {
+    var t0 = g ? g.t0 : pts[0][0], t1 = g ? g.t1 : pts[pts.length-1][0];
+    var vs = visStats(pts, t0, t1);
+    var s = stats(vs);
+    foot.push("<span>창 <b>" + Math.round((t1-t0)/60000) + "분</b>" + (st.view ? " <b style='color:#3d7bfd'>확대</b>" : "") + "</span>");
+    if (s) foot.push("<span>고 <b>" + f2(s.max) + "</b> · 저 <b>" + f2(s.min) + "</b></span>" +
+                     "<span>범위 <b>" + f2(s.max-s.min) + "</b></span>" +
+                     "<span>σ <b>" + fp(s.sd,2) + "</b></span>");
+    foot.push("<span class='hint'>" + S.fut.iv + "분 " + vs.length + "봉" +
+              (candleMode ? " · 봉 모드" : " · 선 모드") + "</span>");
+  }
+  foot.push("<span class='hint'>" + (S.fut.at ? ago(S.fut.at) : "") +
+            " · API " + (S.fut.base ? new URL(S.fut.base).host : "—") + "</span>");
+  $("#footF").innerHTML = foot.join("");
+}
+
+/* ---------- 수집 ---------- */
+async function fetchKospiOnce(){
+  var bust = "?_=" + Date.now();
+  var order = S.kospi.route === 1 ? ["relay","direct"] : ["direct","relay"];
+  var lastErr = null;
+  for (var i=0;i<order.length;i++){
+    var kind = order[i];
+    var url = kind === "direct" ? KOSPI_URL + bust : "https://r.jina.ai/" + KOSPI_URL + bust;
+    try {
+      var res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      var txt = await res.text();
+      var at = txt.indexOf('{"');
+      if (at > 0) txt = txt.slice(at);
+      txt = txt.trim().replace(/^```[a-z]*\s*/,"").replace(/```$/,"");
+      var j = JSON.parse(txt);
+      if (!j || !j.chart) throw new Error("스키마 불일치");
+      S.kospi.route = (kind === "relay") ? 1 : 0;
+      S.kospi.snap = j; S.kospi.at = Date.now(); S.kospi.err = "";
+      return true;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("실패");
+}
+
+function kospiStatus(){
+  var el = $("#stK");
+  if (S.kospi.err){
+    el.className = "st err";
+    el.innerHTML = "<i></i>KOSPI " + S.kospi.err;
+  } else if (S.kospi.at){
+    el.className = "st ok";
+    el.innerHTML = "<i></i>KOSPI " + ago(S.kospi.at) +
+      (S.kospi.route ? " · 중계" : " · 직접") +
+      (S.kospi.snap && S.kospi.snap.mode ? " · " + S.kospi.snap.mode : "");
+  }
+}
+function futStatus(){
+  var el = $("#stF");
+  if (S.fut.err){
+    el.className = "st err";
+    el.innerHTML = "<i></i>선물 " + S.fut.err;
+  } else if (S.fut.quote){
+    el.className = "st ok";
+    el.innerHTML = "<i></i>선물 " + ago(S.fut.at) + " · " + S.fut.sym.replace("=F","");
+  }
+}
+
+function kickKospi(){
+  if (T.kospi) { clearTimeout(T.kospi); T.kospi = 0; }
+  fetchKospiOnce().then(function(){
+    renderIntra(); renderTrack(); renderPath(); kospiStatus();
+  }).catch(function(e){
+    S.kospi.err = (e && e.message) ? e.message : "연결 실패";
+    kospiStatus();
+  }).then(function(){
+    if (!document.hidden) T.kospi = setTimeout(kickKospi, KOSPI_MS);
+  });
+}
+
+async function futBase(){
+  if (S.fut.base) return S.fut.base;
+  var r = await fetch(ENDPOINT_URL + "?_=" + Date.now(), { cache: "no-store" });
+  var j = await r.json();
+  if (!j || !j.apiBase) throw new Error("apiBase 없음");
+  S.fut.base = String(j.apiBase).replace(/\/+$/,"");
+  return S.fut.base;
+}
+
+async function loadQuotes(){
+  try {
+    var base = await futBase();
+    var syms = FUT_SYMS.map(function(s){ return s[0]; }).join(",");
+    var r = await fetch(base + "/api/quotes?symbols=" + encodeURIComponent(syms), { cache:"no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    var j = await r.json();
+    var q = (j.quotes || []).filter(function(x){ return x.symbol === S.fut.sym; })[0];
+    if (!q) throw new Error("심볼 없음");
+    if (q.ok === false) throw new Error(q.error || "데이터 없음");
+    S.fut.quote = q; S.fut.at = Date.now(); S.fut.err = "";
+  } catch (e) {
+    S.fut.err = (e && e.message) ? e.message : "연결 실패";
+  }
+  futStatus(); renderFut();
+}
+
+async function loadChart(){
+  try {
+    var base = await futBase();
+    var r = await fetch(base + "/api/chart?symbol=" + encodeURIComponent(S.fut.sym) +
+                        "&interval=" + encodeURIComponent(S.fut.iv), { cache:"no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    var j = await r.json();
+    if (!j || !j.points) throw new Error("차트 응답 오류");
+    S.fut.chart = j; S.fut.err = "";
+  } catch (e) {
+    S.fut.err = (e && e.message) ? e.message : "연결 실패";
+  }
+  renderFut();
+}
+
+function loopQuote(){
+  if (T.quote) { clearTimeout(T.quote); T.quote = 0; }
+  loadQuotes().then(function(){ if (!document.hidden) T.quote = setTimeout(loopQuote, QUOTE_MS); });
+}
+function loopChart(){
+  if (T.chart) { clearTimeout(T.chart); T.chart = 0; }
+  loadChart().then(function(){ if (!document.hidden) T.chart = setTimeout(loopChart, CHART_MS); });
+}
+
+/* ---------- 초기화 ---------- */
+function setSpan(key, render, v){
+  var st = chState(key);
+  st.span = v; st.view = null;
+  render();
+}
+chips($("#chWinA"), WINS, chState("cvA",30).span, function(v){ setSpan("cvA", renderIntra, v); });
+chips($("#chWinB"), WINS, chState("cvB",180).span, function(v){ setSpan("cvB", renderTrack, v); });
+chips($("#chModeA"), MODES, "line", function(v){
+  var st = chState("cvA"); st.mode = v; renderIntra();
+});
+chips($("#chModeF"), MODES, "line", function(v){
+  var st = chState("cvF"); st.mode = v; renderFut();
+});
+chips($("#chSym"), FUT_SYMS, S.fut.sym, function(v){
+  S.fut.sym = v; S.fut.chart = null; S.fut.quote = null;
+  S.ch["cvF"].view = null;
+  renderFut(); loadQuotes(); loopChart();
+});
+chips($("#chIv"), FUT_IVS, S.fut.iv, function(v){
+  S.fut.iv = v; S.fut.chart = null; S.ch["cvF"].view = null; renderFut(); loopChart();
+});
+
+bindZoom($("#cvA"), "cvA", renderIntra);
+bindZoom($("#cvB"), "cvB", renderTrack);
+bindZoom($("#cvP"), "cvP", renderPath);
+bindZoom($("#cvF"), "cvF", renderFut);
+
+Array.prototype.forEach.call(document.querySelectorAll(".zb"), function(box){
+  var key = box.getAttribute("data-zc");
+  box.addEventListener("click", function(e){
+    var b = e.target.closest("button");
+    if (!b) return;
+    var cv = document.getElementById(key);
+    var z = b.getAttribute("data-z");
+    if (z === "in") zoomAt(cv, 0.7, 0.5);
+    else if (z === "out") zoomAt(cv, 1.45, 0.5);
+    else resetView(cv);
+  });
+});
+
+$("#refresh").onclick = function(){
+  if (T.kospi) clearTimeout(T.kospi);
+  if (T.quote) clearTimeout(T.quote);
+  if (T.chart) clearTimeout(T.chart);
+  T.kospi = T.quote = T.chart = 0;
+  S.kospi.err = ""; S.fut.err = "";
+  kospiStatus(); futStatus();
+  kickKospi(); loopQuote(); loopChart();
+};
+window.addEventListener("keydown", function(e){
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "r") $("#refresh").click();
+});
+
+/* 창이 숨으면 전부 멈춘다 */
+document.addEventListener("visibilitychange", function(){
+  if (document.hidden){
+    if (T.kospi) clearTimeout(T.kospi);
+    if (T.quote) clearTimeout(T.quote);
+    if (T.chart) clearTimeout(T.chart);
+    T.kospi = T.quote = T.chart = 0;
+  } else {
+    kickKospi(); loopQuote(); loopChart();
+  }
+});
+
+/* 캔버스는 창 크기가 바뀔 때만 다시 그린다 */
+var rz = 0;
+window.addEventListener("resize", function(){
+  if (rz) clearTimeout(rz);
+  rz = setTimeout(function(){
+    rz = 0;
+    renderIntra(); renderTrack(); renderPath(); renderFut();
+  }, 120);
+});
+
+renderIntra(); renderTrack(); renderPath(); renderFut();
+kickKospi(); loopQuote(); loopChart();
+</script>
+</body>
+</html>
