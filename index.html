@@ -1052,6 +1052,8 @@ function pickCandleMs(cv, t0, t1, base){
 }
 
 /* ---------- 3-TRACK 누적 저장소 ----------
+   키에 2를 붙인 이유: 2026-11-20 11:19~11:20 KST 사이에 배포된 판이 이번 발행이 아닌 calibrated 레코드를
+   CAL 경로로 저장했고, 발행 id 로만 키가 잡혀 있어 그 기록은 하루 종일 남는다. 키를 올려 그 구간을 버린다.
    원본 페이지의 "연속 누적"은 발행마다의 10분 목표 경로를 시간 순으로 이어붙인 한 줄이다.
    스냅샷은 지금 유효한 발행 경로 하나만 주므로(prediction_contract.completed 는 비어 있다),
    브라우저가 받은 발행을 날짜별로 쌓아 두고 새로고침해도 이어지도록 localStorage 에 남긴다. */
@@ -1064,13 +1066,13 @@ function trkLoad(){
   if (TRK.day === day) return TRK;
   TRK.day = day; TRK.map = {};
   try {
-    var s = localStorage.getItem("k3track:" + day);
+    var s = localStorage.getItem("k3track2:" + day);
     if (s) { var o = JSON.parse(s); if (o && typeof o === "object" && !Array.isArray(o)) TRK.map = o; }
   } catch (e) {}
   return TRK;
 }
 function trkSave(){
-  try { localStorage.setItem("k3track:" + TRK.day, JSON.stringify(TRK.map)); } catch (e) {}
+  try { localStorage.setItem("k3track2:" + TRK.day, JSON.stringify(TRK.map)); } catch (e) {}
 }
 function trkTrim(){
   var ids = Object.keys(TRK.map), list = [];
