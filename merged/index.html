@@ -126,12 +126,13 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
   <!-- 2. 상대 성과 — 두 시장을 같은 시간축에서 (09:00 KST = 100) -->
   <section class="card" id="c-rel">
     <div class="hd">
-      <h2>상대 성과 <span style="color:#5d6675;font-weight:400">09:00 시점 = 100 · 전일 종가 기준</span></h2>
+      <h2>상대 성과 <span style="color:#5d6675;font-weight:400">09:00 KST 시점 = 100</span></h2>
+      <div class="chips" id="chRelSym" title="KOSPI200 과 비교할 선물"></div>
       <div class="lg" style="padding:0">
         <span><i class="k" style="border-color:#3d7bfd"></i>KOSPI200</span>
-        <span><i class="k" style="border-color:#f0a24a"></i>ES 선물</span>
+        <span><i class="k" style="border-color:#f0a24a"></i><span id="lgRelSym">ES 선물</span></span>
       </div>
-      <span class="hint" style="margin-left:auto">KOSPI200 vs ES 선물 · 같은 시간축에서 비교</span>
+      <span class="hint" style="margin-left:auto">같은 시간축 · 기준값은 두 시장 각각의 09:00 직전 값</span>
     </div>
     <canvas class="cv" id="cvR" height="230"></canvas>
     <div class="foot" id="footR"></div>
@@ -201,7 +202,7 @@ var MIN_SPAN = 20000;   // 확대 하한 20초
 var S = {
   kospi: { snap: null, view: null, route: 0, at: 0, err: "", ws: null, openedAt: 0, retry: 0 },
   fut: { base: "", sym: "ES=F", iv: "1", quote: null, chart: null, ticks: [], res: null, at: 0, err: "" },
-  rel: { pts: [], at: 0, err: "" },
+  rel: { sym: "", pts: [], at: 0, err: "" },
   ch: {}   // 캔버스별 상태: {span, view:{t0,t1}|null, mode:'line'|'candle'}
 };
 
@@ -1251,12 +1252,43 @@ function renderKospiPanel(k){
 /* ---------- 상대 성과 ----------
    두 시장을 원 단위로 한 축에 올리면 KOSPI 의 하루 이동이 1px 남짓이 되어 사라진다(실측: 755~7,734pt
    범위에서 KOSPI 하루 이동 44.56pt = 1.2px). 그래서 09:00 KST 값을 100 으로 정규화해 비교한다.
-   선물 쪽은 ES 선물 1분봉(별도 요청)을 쓰고, KOSPI 쪽은 통합 차트와 같은 실측 배열을 쓴다. */
-var REL_SYM = "ES=F";
-function relBase(pts, t){
-  var v = null;
-  for (var i=0;i<pts.length;i++){ if (pts[i][0] <= t) v = pts[i][1]; else break; }
-  return v;
+   선물 쪽은 아래 목록에서 고른 종목의 1분봉(별도 요청)을 쓰고, KOSPI 쪽은 통합 차트와 같은 실측 배열을 쓴다.
+   목록은 선물 백엔드(/api/chart)가 실제로 1분봉을 주는 심볼만 담는다 — 2026-11-20 실측으로 10종 모두 응답 확인. */
+var REL_SYMS = [
+  ["ES=F", "ES", "S&P500 선물 (CME)"],
+  ["NQ=F", "NQ", "나스닥100 선물"],
+  ["YM=F", "YM", "다우30 선물"],
+  ["VIX=F","VX", "변동성지수(VIX) 선물"],
+  ["CL=F", "CL", "WTI 원유 선물"],
+  ["GC=F", "GC", "금 선물"],
+  ["SI=F", "SI", "은 선물"],
+  ["HG=F", "HG", "구리 선물"],
+  ["NG=F", "NG", "천연가스 선물"],
+  ["BTC=F","BTC","비트코인 선물"]
+];
+var REL_KEY = "relsym:v1";
+function relSaved(){
+  try {
+    var v = localStorage.getItem(REL_KEY);
+    for (var i=0;i<REL_SYMS.length;i++) if (REL_SYMS[i][0] === v) return v;
+  } catch(e){}
+  return "ES=F";
+}
+function relSym(){ if (!S.rel.sym) S.rel.sym = relSaved(); return S.rel.sym; }
+function relMeta(sym){
+  for (var i=0;i<REL_SYMS.length;i++) if (REL_SYMS[i][0] === sym) return REL_SYMS[i];
+  return [sym, String(sym).replace("=F",""), sym];
+}
+/* ss(09:00 KST) 직전의 마지막 값. 그런 점이 없으면(선물 1분봉이 09:00 이후부터 있을 때)
+   첫 점을 기준으로 삼고 first=true 로 표시해, 기준이 09:00 이 아님을 화면에서 밝힌다. */
+function relBaseAt(pts, t){
+  var v = null, bt = null;
+  for (var i=0;i<pts.length;i++){
+    if (pts[i][0] <= t){ if (isFinite(pts[i][1])){ v = pts[i][1]; bt = pts[i][0]; } }
+    else break;
+  }
+  if (v == null && pts.length) return { v: pts[0][1], t: pts[0][0], first: true };
+  return { v: v, t: bt, first: false };
 }
 function relIndex(pts, base, ss){
   var out = [];
@@ -1267,27 +1299,34 @@ function relIndex(pts, base, ss){
   }
   return out;
 }
+function relBaseNote(b){
+  if (b.v == null) return "기준값 없음";
+  if (b.first) return "직전 값 없음 · 첫 값 " + hhmm(b.t, KST) + " 기준";
+  return "09:00 직전 값 기준";
+}
 function renderRel(){
   var cv = $("#cvR"); if (!cv) return;
+  var meta = relMeta(relSym()), fxName = meta[1] + " 선물";
+  var lg = $("#lgRelSym"); if (lg) lg.textContent = fxName;
   var nowMs = Date.now();
   var ss = Date.parse(kstDate(nowMs) + "T09:00:00+09:00");
   if (nowMs < ss) ss -= 86400000;   /* 개장 전이면 직전 세션을 본다 */
 
   var k = kospiTracks();
   var kp = (k && k.actual) ? k.actual : [];
-  var es = (S.rel.pts || []);
-  var kBase = relBase(kp, ss), eBase = relBase(es, ss);
-  var ks = relIndex(kp, kBase, ss), es2 = relIndex(es, eBase, ss);
+  var fx = (S.rel.pts || []);
+  var kb = relBaseAt(kp, ss), fb = relBaseAt(fx, ss);
+  var ks = relIndex(kp, kb.v, ss), fs = relIndex(fx, fb.v, ss);
 
-  if (!ks.length && !es2.length){
-    draw(cv, { key:"cvR", empty: S.rel.err ? "선물 차트 오류: " + S.rel.err : "상대 성과 대기…" });
+  if (!ks.length && !fs.length){
+    draw(cv, { key:"cvR", empty: S.rel.err ? (fxName + " 차트 오류: " + S.rel.err) : (fxName + " 대기…") });
     $("#footR").textContent = ""; return;
   }
   var series = [];
   if (ks.length) series.push({ pts: ks, color:"#3d7bfd", w:1.8, name:"KOSPI200",
                                tag:"KOSPI " + fp(ks[ks.length-1][1], 2) });
-  if (es2.length) series.push({ pts: es2, color:"#f0a24a", w:1.6, name:"ES 선물",
-                                tag:"ES " + fp(es2[es2.length-1][1], 2) });
+  if (fs.length) series.push({ pts: fs, color:"#f0a24a", w:1.6, name:fxName,
+                               tag:meta[1] + " " + fp(fs[fs.length-1][1], 2) });
 
   draw(cv, {
     key: "cvR", series: series, mark: false,
@@ -1297,18 +1336,42 @@ function renderRel(){
   });
 
   var kv = ks.length ? ks[ks.length-1][1] : null;
-  var ev = es2.length ? es2[es2.length-1][1] : null;
-  function cell(name, v, base){
+  var fv = fs.length ? fs[fs.length-1][1] : null;
+  function cell(name, v, b){
     if (v == null) return "<span>" + name + " <b>—</b> <span class='hint'>기준값 없음</span></span>";
     var d = v - 100;
     return "<span>" + name + " <b>" + fp(v,2) + "</b> <span class='" + (d>=0?"up":"dn") + "'>" + pct(d) + "</span>" +
-           " <span class='hint'>(" + f2(base) + " →)</span></span>";
+           " <span class='hint' title='" + relBaseNote(b) + "'>(" + relBaseNote(b) + " " + f2(b.v) + " →)</span></span>";
   }
   $("#footR").innerHTML =
-    cell("KOSPI200", kv, kBase) + cell("ES 선물", ev, eBase) +
-    "<span class='hint'>기준 09:00 KST · ES 1분봉 " + es.length.toLocaleString() + "점" +
+    cell("KOSPI200", kv, kb) + cell(fxName, fv, fb) +
+    "<span class='hint'>" + fxName + " 1분봉 " + fx.length.toLocaleString() + "점" +
       (S.rel.at ? " · " + ago(S.rel.at) : "") +
       (S.rel.err ? " · 오류 " + S.rel.err : "") + "</span>";
+}
+/* 비교 선물 선택 칩 */
+function buildRelSel(){
+  var el = $("#chRelSym"); if (!el) return;
+  el.innerHTML = "";
+  REL_SYMS.forEach(function(it){
+    var b = document.createElement("button");
+    b.textContent = it[1];
+    b.title = it[2];
+    if (it[0] === relSym()) b.className = "on";
+    b.onclick = function(){
+      if (S.rel.sym === it[0]) return;
+      S.rel.sym = it[0];
+      try { localStorage.setItem(REL_KEY, it[0]); } catch(e){}
+      Array.prototype.forEach.call(el.children, function(x){ x.className = ""; });
+      b.className = "on";
+      /* 종목이 바뀌면 이전 종목의 점과 확대 창을 그대로 두면 안 된다 */
+      S.rel.pts = []; S.rel.at = 0; S.rel.err = "";
+      var st = chState("cvR"); st.view = null; st.follow = true;
+      renderRel();
+      loadRel();
+    };
+    el.appendChild(b);
+  });
 }
 
 /* ---------- FUTURES ---------- */
@@ -1686,17 +1749,19 @@ async function loadTicks(full){
 }
 
 async function loadRel(){
+  var sym = relSym();
   try {
     var base = await futBase();
-    var r = await fetch(base + "/api/chart?symbol=" + encodeURIComponent(REL_SYM) +
+    var r = await fetch(base + "/api/chart?symbol=" + encodeURIComponent(sym) +
                         "&interval=1&_=" + Date.now(), { cache:"no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
     var j = await r.json();
     if (!j || !j.points) throw new Error("차트 응답 오류");
+    if (sym !== S.rel.sym) return;   /* 응답을 기다리는 사이 종목이 바뀌었으면 버린다 */
     S.rel.pts = j.points.map(function(p){ return [p[0]*1000, p[1]]; }).slice(-1500);
     S.rel.at = Date.now(); S.rel.err = "";
   } catch (e) {
-    S.rel.err = (e && e.message) ? e.message : "연결 실패";
+    if (sym === S.rel.sym) S.rel.err = (e && e.message) ? e.message : "연결 실패";
   }
   renderRel();
 }
@@ -1828,6 +1893,7 @@ window.addEventListener("resize", function(){
   }, 120);
 });
 
+buildRelSel();
 renderMerged(); renderRel(); renderFut();
 kickKospi(); loopQuote(); loopChart(); loopTick(); loopRel();
 </script>
