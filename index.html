@@ -106,6 +106,7 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
         <button data-z="live" title="최신 값으로 (따라가기)">⏭</button>
       </div>
     </div>
+    <div class="q" id="qRowK"></div>
     <div class="lg">
       <span><i class="k" style="border-color:#3d7bfd"></i>실측 <b id="lgResA" style="color:#5d6675;font-weight:400"></b></span>
       <span><i class="k d" style="border-color:#f0a24a"></i>RAW · 10분 목표</span>
@@ -865,21 +866,82 @@ function stats(vals){
 }
 
 /* ---------- KOSPI ---------- */
+/* ---------- 실측 누적 저장소 ----------
+   스냅샷의 chart.tracks.actual 은 (시가, 현재) 두 점만 온다. 그래서 20초마다 받은
+   현재가를 브라우저가 날짜별로 쌓아 두고, 받은 두 점과 합쳐서 그린다. 쌓인 점은
+   업스트림 1초 틱이 아니라 '이 브라우저가 본 값'이므로 화면에서 출처를 나눠 적는다. */
+var ACT = { key:"", pts:[], cap:4000 };
+
+function actLoad(){
+  var day = kstDate(Date.now());
+  if (ACT.key === day) return ACT;
+  ACT.key = day; ACT.pts = [];
+  try {
+    var s = localStorage.getItem("kact:" + day);
+    if (s) {
+      var a = JSON.parse(s);
+      if (Array.isArray(a)) ACT.pts = a.filter(function(p){ return p && isFinite(p[0]) && isFinite(p[1]); });
+    }
+  } catch (e) {}
+  return ACT;
+}
+function actSave(){ try { localStorage.setItem("kact:" + ACT.key, JSON.stringify(ACT.pts)); } catch (e) {} }
+function actIngest(pts){
+  if (!pts || !pts.length) return;
+  actLoad();
+  var dayStart = Date.parse(ACT.key + "T00:00:00+09:00");
+  var have = {}, changed = false, i;
+  for (i=0;i<ACT.pts.length;i++) have[ACT.pts[i][0]] = 1;
+  for (i=0;i<pts.length;i++){
+    var p = pts[i];
+    if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
+    if (p[0] < dayStart) continue;
+    if (have[p[0]]) continue;
+    ACT.pts.push([+p[0], +p[1]]); have[p[0]] = 1; changed = true;
+  }
+  if (!changed) return;
+  ACT.pts.sort(function(a,b){ return a[0]-b[0]; });
+  if (ACT.pts.length > ACT.cap) ACT.pts = ACT.pts.slice(ACT.pts.length - ACT.cap);
+  actSave();
+}
+function actMerge(up){
+  actLoad();
+  var seen = {}, out = [], i;
+  for (i=0;i<up.length;i++){
+    var p = up[i];
+    if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
+    seen[p[0]] = 1; out.push([+p[0], +p[1]]);
+  }
+  for (i=0;i<ACT.pts.length;i++){
+    var q = ACT.pts[i];
+    if (seen[q[0]]) continue;
+    out.push([q[0], q[1]]);
+  }
+  out.sort(function(a,b){ return a[0]-b[0]; });
+  return out;
+}
+
 function kospiTracks(){
   var s = S.kospi.snap;
   if (!s || !s.chart || !s.chart.tracks) return null;
   var t = s.chart.tracks;
-  var actual = (t.actual || []).slice();
+  var up = (t.actual || []).slice();
   var cont = t.continuous_actual || [];
-  var lastMs = actual.length ? actual[actual.length-1][0] : 0;
-  for (var i=0;i<cont.length;i++) if (cont[i][0] > lastMs) actual.push(cont[i]);
+  var lastMs = up.length ? up[up.length-1][0] : 0;
+  for (var i=0;i<cont.length;i++) if (cont[i][0] > lastMs) up.push(cont[i]);
+  actIngest(up);
+  var actual = actMerge(up);
   return {
     actual: actual,
+    upN: up.length,
+    locN: Math.max(0, actual.length - up.length),
     raw: t.raw || [],
     cal: t.calibrated || [],
     active: (s.chart.prediction_contract || {}).active || null,
     pc: s.chart.prediction_contract || {},
     snap: s,
+    quote: s.official_quote || {},
+    stale: s.source_stale === true,
     updated: s.updated_at_kst || "",
     mode: s.mode || ""
   };
@@ -890,9 +952,34 @@ function visStats(pts, t0, t1){
   return out;
 }
 
+/* KOSPI 헤더 시세 — 전일 종가는 공식 등락률에서 되돌려 계산한다(스냅샷에 전일 종가가 따로 없다). */
+function renderKospiQuote(k){
+  var el = $("#qRowK"); if (!el) return;
+  var q = (k && k.quote) || {};
+  var last = (k && k.actual.length) ? k.actual[k.actual.length-1] : null;
+  var price = (q.price != null) ? +q.price : (last ? last[1] : null);
+  var pc = (q.change_pct != null) ? +q.change_pct : null;
+  var prev = (price != null && pc != null && isFinite(pc) && (1 + pc/100) !== 0) ? price / (1 + pc/100) : null;
+  var chg = (price != null && prev != null) ? price - prev : null;
+  var cls = (chg == null) ? "" : (chg >= 0 ? "up" : "dn");
+  var obs = q.observed_at_kst || "";
+  el.innerHTML =
+    "<span class='sym'>KOSPI200</span>" +
+    "<span class='px " + cls + "'>" + f2(price) + "</span>" +
+    "<span class='ch " + cls + "'><span style='color:#5d6676;font-weight:400'>전일 대비 </span>" +
+      (chg == null ? "—" : sgn(chg)) + " (" + (pc == null ? "—" : pct(pc)) + ")</span>" +
+    "<span class='rows'>" +
+      "<span>전일 종가 <b title='공식 등락률에서 되돌려 계산한 값'>" + f2(prev) + "</b></span>" +
+      "<span>공식 관측 <b>" + (obs ? obs.slice(11,19) : "—") + "</b> KST</span>" +
+      "<span>모드 <b>" + ((k && k.mode) || "—") + "</b></span>" +
+      "<span style='color:#4f5866'>" + (q.source || "") + "</span>" +
+    "</span>";
+}
+
 function renderIntra(){
   var k = kospiTracks(), cv = $("#cvA");
   var st = chState("cvA", 30);
+  renderKospiQuote(k);
   if (!k || !k.actual.length){
     draw(cv, { key:"cvA", empty: S.kospi.snap ? "실측 데이터 없음" : "KOSPI 데이터 대기…" });
     $("#footA").textContent = ""; $("#lgResA").textContent = ""; return;
@@ -919,7 +1006,7 @@ function renderIntra(){
   });
 
   var g = cv._geo;
-  $("#lgResA").textContent = "· 1초 틱 " + act.length.toLocaleString() + "점";
+  $("#lgResA").textContent = "· " + act.length.toLocaleString() + "점";
   var t0 = g ? g.t0 : act[0][0], t1 = g ? g.t1 : act[act.length-1][0];
   var vs = visStats(act, t0, t1);
   var s = stats(vs);
@@ -933,16 +1020,22 @@ function renderIntra(){
     if (act[i][1] === s.max) hiT = act[i][0];
     if (act[i][1] === s.min) loT = act[i][0];
   }
+  /* 점이 두 개 이하면 σ 0.000 · 변동 0.00% 가 통계가 아니라 '계산 불가'인데, 화면에서는 보합처럼 읽힌다.
+     그래서 3점 미만이면 숫자를 쓰지 않고 표본 수를 그대로 적는다. */
+  var enough = vs.length >= 3;
   $("#footA").innerHTML =
     "<span>창 <b>" + (spanMin >= 1 ? Math.round(spanMin) + "분" : Math.round(spanMin*60) + "초") + "</b>" +
       zoomTag(st) + "</span>" +
     "<span>고 <b>" + f2(s.max) + "</b> <span style='color:#4f5866'>" + hhmm(hiT, KST) + "</span></span>" +
     "<span>저 <b>" + f2(s.min) + "</b> <span style='color:#4f5866'>" + hhmm(loT, KST) + "</span></span>" +
-    "<span>평균 <b>" + f2(s.mean) + "</b></span>" +
-    "<span>σ <b>" + fp(s.sd,3) + "</b></span>" +
-    "<span class='" + cls + "'>변동 <b>" + sgn(d) + " (" + pct(p) + ")</b></span>" +
-    "<span class='hint'>" + vs.length.toLocaleString() + "점 · " +
-      (k.updated ? k.updated.slice(11,19) + " KST 갱신" : "") + "</span>";
+    (enough
+      ? "<span>평균 <b>" + f2(s.mean) + "</b></span>" +
+        "<span>σ <b>" + fp(s.sd,3) + "</b></span>" +
+        "<span class='" + cls + "'>창 변동 <b>" + sgn(d) + " (" + pct(p) + ")</b></span>"
+      : "<span class='hint'>창 안 표본 " + vs.length + "점 — 평균·σ·창 변동은 3점부터 계산합니다</span>") +
+    "<span class='hint'>실측 " + act.length.toLocaleString() + "점" +
+      (k.locN ? " (업스트림 " + k.upN + " · 브라우저 누적 " + k.locN + ")" : "") +
+      " · 스냅샷 " + (k.updated ? k.updated.slice(11,19) + " KST" : "—") + "</span>";
 }
 
 function pickCandleMs(cv, t0, t1, base){
@@ -1104,7 +1197,9 @@ function renderTrack(){
   /* 발행 근거 카드 — 원본의 최신 RAW 목표 주석 자리 */
   var el = $("#annB"), last = list.length ? list[list.length-1] : null;
   if (!last){
-    el.innerHTML = "<span class='hint'>누적 발행 대기 — 스냅샷에서 발행 경로를 받는 대로 쌓습니다</span>";
+    var rd = (k.snap && k.snap.prediction_readiness) || {};
+    el.innerHTML = "<span class='hint'>누적 발행 대기 — 스냅샷에서 발행 경로를 받는 대로 쌓습니다" +
+      (rd.state ? " (준비 상태 " + rd.state + (rd.reason ? " / " + rd.reason : "") + ")" : "") + "</span>";
   } else {
     var pv = list.length > 1 ? list[list.length-2] : null;
     var dv = (pv && pv.rawTarget != null && last.rawTarget != null) ? last.rawTarget - pv.rawTarget : null;
@@ -1147,7 +1242,8 @@ function renderKospiPanel(k){
   html += kv("보정식", (a.calibration_formula_version || "—").replace(/_/g," "));
   html += kv("1분 잔차 평균", learn.residual_mean == null ? "—" : sgn(learn.residual_mean, 4) +
              " <span style='color:#4f5866'>(" + (learn.samples == null ? "—" : learn.samples.toLocaleString()) + "표본)</span>");
-  html += kv("실측 해상도", (k.actual.length ? "1초 틱 " + k.actual.length.toLocaleString() + "점" : "—"));
+  html += kv("실측 점수", (k.actual.length ? k.actual.length.toLocaleString() + "점" +
+             (k.locN ? " <span style='color:#4f5866'>(업스트림 " + k.upN + " · 브라우저 누적 " + k.locN + ")</span>" : "") : "—"));
   html += kv("스냅샷 갱신", k.updated ? k.updated.slice(11,19) + " KST" : "—");
   html += kv("소스", (src.source_kind || "—") + (src.official_actual ? " · 공식" : ""));
   html += kv("원장 seq / 해시", (src.journal_seq == null ? "—" : src.journal_seq) +
@@ -1161,11 +1257,14 @@ function renderKospiPanel(k){
    ["raw 불변", inv.raw_immutable],
    ["과거 prefix 불변", inv.cal_past_prefix_immutable],
    ["공통 horizon", inv.common_horizon],
-   ["경계 명시", inv.transition_boundary_explicit],
-   ["stale 없음", s.source_stale === false]].forEach(function(b){
+   ["경계 명시", inv.transition_boundary_explicit]].forEach(function(b){
     if (b[1] === undefined) return;
     badges += "<span class='badge " + (b[1] ? "ok" : "no") + "'>" + (b[1] ? "✓ " : "✗ ") + b[0] + "</span>";
   });
+  /* 'stale 없음'에 ✗ 를 붙이면 이중 부정이 되어 읽히지 않는다 — 상태 자체를 이름으로 쓴다 */
+  if (s.source_stale !== undefined && s.source_stale !== null)
+    badges += "<span class='badge " + (s.source_stale ? "no" : "ok") + "'>" +
+      (s.source_stale ? "⚠ 스냅샷 stale" : "✓ stale 없음") + "</span>";
   html += "<div class='badges'>" + badges +
     "<span class='badge'>" + (s.presentation_schema || "") + "</span>" +
     "<span class='badge'>content " + (s.content_hash ? String(s.content_hash).slice(0,8) : "—") + "</span></div>";
@@ -1326,17 +1425,24 @@ async function fetchKospiOnce(){
   throw lastErr || new Error("실패");
 }
 
+/* 상태줄은 '언제 받았나'가 아니라 '스냅샷이 언제 것인가'를 적는다.
+   받은 시각만 쓰면 20초마다 새로 받는다는 이유로 데이터가 7분 묵어도 '0초 전'이 된다. */
 function kospiStatus(){
-  var el = $("#stK");
-  if (S.kospi.err){
+  var el = $("#stK"), s = S.kospi.snap || null;
+  var updMs = (s && s.updated_at_kst) ? Date.parse(s.updated_at_kst) : 0;
+  var stale = !!(s && (s.source_stale === true || s.mode === "STALE"));
+  if (S.kospi.err && !updMs){
     el.className = "st err";
     el.innerHTML = "<i></i>KOSPI " + S.kospi.err;
-  } else if (S.kospi.at){
-    el.className = "st ok";
-    el.innerHTML = "<i></i>KOSPI " + ago(S.kospi.at) +
-      (S.kospi.route ? " · 중계" : " · 직접") +
-      (S.kospi.snap && S.kospi.snap.mode ? " · " + S.kospi.snap.mode : "");
+    return;
   }
+  var bits = [];
+  bits.push(updMs ? "스냅샷 " + ago(updMs) : "—");
+  bits.push(S.kospi.route ? "중계" : "직접");
+  if (s && s.mode) bits.push(s.mode);
+  if (S.kospi.err) bits.push("갱신 실패");
+  el.className = "st " + ((stale || S.kospi.err) ? "warn" : "ok");
+  el.innerHTML = "<i></i>KOSPI " + bits.join(" · ");
 }
 function futStatus(){
   var el = $("#stF");
