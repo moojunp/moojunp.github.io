@@ -201,7 +201,10 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
    - 예측 계약 상세 패널(발행ID·만기·보정식·잔차·불변식 배지·해시)
    ========================================================================= */
 
-var KOSPI_URL = "https://kospi200-live-primary.vicious130510.chatgpt.site/api/live";
+/* KOSPI 원본은 kospi200.walruslab.org 의 v3 창 문서다. HTTP 표면에는 요약(latest.json)만 있고
+   차트 시계열은 WS(/ws)의 view 프레임으로만 오므로, 20초 폴링 대신 WS 하나를 붙잡는다.
+   (HTTP 응답에는 CORS 헤더가 없어 브라우저 직접 fetch 는 애초에 막힌다. WS 는 그 제약이 없다.) */
+var KOSPI_WS = "wss://kospi200.walruslab.org/ws";
 var ENDPOINT_URL = "https://moojunp.github.io/futures-dashboard/endpoint.json";
 var KOSPI_MS = 20000;
 var QUOTE_MS = 5000;
@@ -217,7 +220,7 @@ var FUT_IVS = [["1","1분"],["5","5분"],["15","15분"],["30","30분"],["60","60
 var MIN_SPAN = 20000;   // 확대 하한 20초
 
 var S = {
-  kospi: { snap: null, route: 0, at: 0, err: "" },
+  kospi: { snap: null, view: null, route: 0, at: 0, err: "", ws: null, openedAt: 0, retry: 0 },
   fut: { base: "", sym: "ES=F", iv: "1", quote: null, chart: null, ticks: [], res: null, at: 0, err: "" },
   ch: {}   // 캔버스별 상태: {span, view:{t0,t1}|null, mode:'line'|'candle'}
 };
@@ -1190,7 +1193,7 @@ function renderTrack(){
     "<span>CAL 누적 <b>" + f2(calT) + "</b> " + delta(calT) + "</span>" +
     (s ? "<span>창 고/저 <b>" + f2(s.max) + "</b> / <b>" + f2(s.min) + "</b></span>" +
          "<span>σ <b>" + fp(s.sd,3) + "</b></span>" : "") +
-    "<span class='hint'>실측 1초 틱 " + act.length.toLocaleString() + "점 · 누적 발행 " + list.length + "건" +
+    "<span class='hint'>실측 " + act.length.toLocaleString() + "점 · 누적 발행 " + list.length + "건" +
       (cover ? " · 범위 " + Math.round(cover) + "분" : "") +
       (g ? " · 창 " + Math.round((t1-t0)/60000) + "분" : "") + "</span>";
 
@@ -1401,28 +1404,151 @@ function renderFut(){
 }
 
 /* ---------- 수집 ---------- */
-async function fetchKospiOnce(){
-  var bust = "?_=" + Date.now();
-  var order = S.kospi.route === 1 ? ["relay","direct"] : ["direct","relay"];
-  var lastErr = null;
-  for (var i=0;i<order.length;i++){
-    var kind = order[i];
-    var url = kind === "direct" ? KOSPI_URL + bust : "https://r.jina.ai/" + KOSPI_URL + bust;
-    try {
-      var res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      var txt = await res.text();
-      var at = txt.indexOf('{"');
-      if (at > 0) txt = txt.slice(at);
-      txt = txt.trim().replace(/^```[a-z]*\s*/,"").replace(/```$/,"");
-      var j = JSON.parse(txt);
-      if (!j || !j.chart) throw new Error("스키마 불일치");
-      S.kospi.route = (kind === "relay") ? 1 : 0;
-      S.kospi.snap = j; S.kospi.at = Date.now(); S.kospi.err = "";
-      return true;
-    } catch (e) { lastErr = e; }
+/* v3 문서 하나를 이 페이지가 그리는 스냅샷 모양으로 옮긴다.
+   원본(v3)에는 chart.tracks 가 없고 history(실측) + forecast.path(RAW) + calibrated.path_cal(CAL) 로 나뉘어 있다. */
+function kstISO(ms){
+  return new Date(ms + 9*3600e3).toISOString().slice(0,19) + "+09:00";
+}
+function pairPoints(list, tkey, vkey){
+  var out = [];
+  for (var i=0;i<(list||[]).length;i++){
+    var p = list[i];
+    if (!p || !isFinite(p[tkey]) || !isFinite(p[vkey])) continue;
+    out.push([+p[tkey], +p[vkey]]);
   }
-  throw lastErr || new Error("실패");
+  return out;
+}
+function kospiFromView(v){
+  if (!v || v.schema !== "kospi200.view.v3") return null;
+  var act = pairPoints(v.history, "t_ms", "v");
+  if (!act.length) return null;
+
+  var timing = v.timing || {}, content = v.content || {}, link = v.link || {};
+  var cald = v.calibrated || {};
+  var cutoffMs = +timing.cutoff_ms || act[act.length-1][0];
+
+  /* 서버는 연결 직후 view 한 번을 보내고, 그 뒤로는 조각(history·forecast·calibrated…)만 보낸다.
+     새 발행의 기준(anchor)이 history 의 마지막 점보다 최신이면 그 점을 이어 붙여,
+     실측선이 접속 시점에서 멈추지 않게 한다. */
+  var anchorV = (v.forecast && isFinite(v.forecast.anchor)) ? +v.forecast.anchor : null;
+  if (anchorV != null && cutoffMs > act[act.length-1][0]) act.push([cutoffMs, anchorV]);
+  var last = act[act.length-1];
+
+  var raw = pairPoints((v.forecast && v.forecast.path && v.forecast.path.points) || [], "t_ms", "v");
+
+  var cal = [];
+  var cms = cald.path_cal_at_ms || [], cval = cald.path_cal || [];
+  for (var i=0;i<cval.length && i<cms.length;i++){
+    if (isFinite(cval[i]) && isFinite(cms[i])) cal.push([+cms[i], +cval[i]]);
+  }
+
+  /* 전일 종가는 '오늘 09:00 이전의 마지막 값'이다. 창은 6~7시간 롤링이라
+     장 마감 전에는 아직 남아 있고, 없으면 지어내지 않고 null 로 둔다. */
+  var day = kstISO(last[0]).slice(0,10);
+  var dayStart = Date.parse(day + "T09:00:00+09:00");
+  var prevClose = null;
+  for (var j=0;j<act.length;j++){
+    if (act[j][0] < dayStart) prevClose = act[j][1]; else break;
+  }
+  var chgPct = (prevClose && isFinite(prevClose)) ? (last[1]/prevClose - 1)*100 : null;
+
+  var srcIdx = null, srcs = v.sources || [];
+  for (var k=0;k<srcs.length;k++) if (srcs[k] && srcs[k].key === "index") srcIdx = srcs[k];
+  srcIdx = srcIdx || {};
+
+  var targetMs = +timing.target_ms || (raw.length ? raw[raw.length-1][0] : cutoffMs + 600000);
+  var iss = (v.recent && v.recent[0]) || {};
+  var stale = (link.state === "stale") || (srcIdx.age_secs != null && +srcIdx.age_secs > 120);
+
+  var active = raw.length ? {
+    issuance_id: iss.raw_identity || ("v3:" + cutoffMs),
+    issued_at_kst: kstISO(cutoffMs),
+    calibrated_at_kst: kstISO(cutoffMs),
+    horizon_end_at_kst: kstISO(targetMs),
+    raw_target_price: (v.forecast && v.forecast.target != null) ? +v.forecast.target : raw[raw.length-1][1],
+    calibrated_target_price: cal.length ? cal[cal.length-1][1] : null,
+    raw_path: raw,
+    calibrated_path: cal,
+    calibration_status: cal.length ? "APPLIED" : "NONE",
+    calibration_formula_version: cald.formula_version || ""
+  } : null;
+
+  return {
+    schema: v.schema,
+    mode: content.status || "OK",
+    seq: (v.source && v.source.seq != null) ? v.source.seq : null,
+    updated_at_kst: kstISO(cutoffMs),
+    source_stale: !!stale,
+    presentation_schema: v.schema,
+    content_hash: content.obs_digest || "",
+    official_quote: {
+      price: last[1],
+      change_pct: chgPct,
+      prev_close: prevClose,
+      observed_at_kst: kstISO(+srcIdx.available_at_ms || last[0]),
+      source: "KOSPI200 · kospi200.walruslab.org"
+    },
+    source_observation: {
+      source_kind: "KIS_OFFICIAL_INDEX_TICK",
+      official_actual: true,
+      journal_seq: (v.source && v.source.seq != null) ? v.source.seq : null,
+      record_sha256: content.obs_digest || null
+    },
+    official_actual_admission: {
+      session: (timing.session && timing.session.regular_session_progress > 0 && timing.session.regular_session_progress < 1) ? "REGULAR" : "CLOSED",
+      session_start_at: day + "T09:00:00+09:00",
+      session_end_at: day + "T15:30:00+09:00"
+    },
+    prediction_readiness: {
+      state: content.status || "OK",
+      reason: content.reason_code || null
+    },
+    chart: {
+      tracks: { actual: act, continuous_actual: [], raw: raw, calibrated: cal },
+      prediction_contract: { active: active }
+    }
+  };
+}
+
+/* 서버가 보내는 조각 프레임의 키 이름 — 받은 값으로 view 문서의 같은 자리를 통째로 갈아 끼운다. */
+var VIEW_KEYS = { history:1, cal:1, calibrated:1, issuance:1, content:1, timing:1, forecast:1,
+                  path:1, flags:1, kernel:1, sources:1, stats:1, recent:1, factors:1, day:1, news:1 };
+
+function kospiOpen(){
+  if (S.kospi.ws) return;
+  var ws;
+  try { ws = new WebSocket(KOSPI_WS); } catch (e) { S.kospi.err = "WebSocket 사용 불가"; kospiStatus(); return; }
+  S.kospi.ws = ws;
+  S.kospi.openedAt = Date.now();
+  ws.onopen = function(){ S.kospi.openedAt = Date.now(); S.kospi.retry = 0; S.kospi.err = ""; kospiStatus(); };
+  ws.onmessage = function(ev){
+    S.kospi.at = Date.now();
+    var f;
+    try { f = JSON.parse(ev.data); } catch (e) { return; }
+    var d = f.delta || {};
+    if (d.op !== "replace" && d.op !== "snapshot") return;
+    if (f.type === "view"){
+      if (!d.view) return;
+      S.kospi.view = d.view;
+    } else if (VIEW_KEYS[f.type] && d[f.type] !== undefined){
+      if (!S.kospi.view) return;   /* 첫 view 전에 온 조각은 버린다 — 곧 view 가 온다 */
+      S.kospi.view[f.type] = d[f.type];
+    } else {
+      return;
+    }
+    var snap = kospiFromView(S.kospi.view);
+    if (!snap) return;
+    S.kospi.snap = snap; S.kospi.err = "";
+    renderIntra(); renderTrack(); renderPath(); kospiStatus();
+  };
+  ws.onerror = function(){ S.kospi.err = "WS 오류"; kospiStatus(); };
+  ws.onclose = function(){
+    S.kospi.ws = null;
+    if (document.hidden) return;
+    S.kospi.retry = Math.min(S.kospi.retry + 1, 6);
+    setTimeout(function(){ if (!document.hidden) kospiOpen(); }, Math.min(8000, 400 * Math.pow(2, S.kospi.retry)));
+    kospiStatus();
+  };
 }
 
 /* 상태줄은 '언제 받았나'가 아니라 '스냅샷이 언제 것인가'를 적는다.
@@ -1438,7 +1564,7 @@ function kospiStatus(){
   }
   var bits = [];
   bits.push(updMs ? "스냅샷 " + ago(updMs) : "—");
-  bits.push(S.kospi.route ? "중계" : "직접");
+  bits.push(S.kospi.ws ? "WS" : "WS 끊김");
   if (s && s.mode) bits.push(s.mode);
   if (S.kospi.err) bits.push("갱신 실패");
   el.className = "st " + ((stale || S.kospi.err) ? "warn" : "ok");
@@ -1455,15 +1581,18 @@ function futStatus(){
   }
 }
 
+/* WS 는 계속 열어 두고, 이 타이머는 감시자다 — 45초 조용하면 끊고 다시 붙는다. */
 function kickKospi(){
   if (T.kospi) clearTimeout(T.kospi);
-  T.kospi = setTimeout(kickKospi, KOSPI_MS);   /* 예약을 먼저 걸어 두면 루프가 끊기지 않는다 */
-  fetchKospiOnce().then(function(){
-    renderIntra(); renderTrack(); renderPath(); kospiStatus();
-  }).catch(function(e){
-    S.kospi.err = (e && e.message) ? e.message : "연결 실패";
-    kospiStatus();
-  });
+  T.kospi = setTimeout(kickKospi, KOSPI_MS);
+  kospiOpen();
+  var ref = S.kospi.at || S.kospi.openedAt || 0;
+  if (S.kospi.ws && ref && (Date.now() - ref > 45000)){
+    try { S.kospi.ws.close(); } catch (e) {}
+    S.kospi.ws = null;
+    kospiOpen();
+  }
+  kospiStatus();
 }
 
 async function futBase(){
