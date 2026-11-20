@@ -1418,6 +1418,8 @@ function pairPoints(list, tkey, vkey){
   }
   return out;
 }
+function iss0(v){ var r = (v.recent && v.recent[0]) || {}; return r.raw_identity || null; }
+
 function kospiFromView(v){
   if (!v || v.schema !== "kospi200.view.v3") return null;
   var act = pairPoints(v.history, "t_ms", "v");
@@ -1436,9 +1438,19 @@ function kospiFromView(v){
 
   var raw = pairPoints((v.forecast && v.forecast.path && v.forecast.path.points) || [], "t_ms", "v");
 
+  /* CAL 경로는 '이번 발행의 것'만 쓴다. 서버는 과거 발행들의 calibrated 레코드를 한꺼번에 밀어 주고
+     도착 순서가 보장되지 않으므로, 그대로 덮어쓰면 몇 분 전 발행의 CAL 이 지금 선으로 그려진다.
+     cal.rows 에서 이번 발행(raw_identity)을 먼저 찾고, 없으면 cutoff 가 같은 레코드만 인정한다. */
+  var calRec = null, rows = (v.cal && v.cal.rows) || [];
+  var curId = iss0(v);
+  var i;
+  for (i=0;i<rows.length;i++) if (rows[i] && curId && rows[i].raw_identity === curId) { calRec = rows[i]; break; }
+  if (!calRec) for (i=0;i<rows.length;i++) if (rows[i] && +rows[i].cutoff_ms === cutoffMs) { calRec = rows[i]; break; }
+  if (!calRec && cald && +cald.cutoff_ms === cutoffMs) calRec = cald;
+
   var cal = [];
-  var cms = cald.path_cal_at_ms || [], cval = cald.path_cal || [];
-  for (var i=0;i<cval.length && i<cms.length;i++){
+  var cms = (calRec && calRec.path_cal_at_ms) || [], cval = (calRec && calRec.path_cal) || [];
+  for (i=0;i<cval.length && i<cms.length;i++){
     if (isFinite(cval[i]) && isFinite(cms[i])) cal.push([+cms[i], +cval[i]]);
   }
 
@@ -1466,7 +1478,7 @@ function kospiFromView(v){
     calibrated_at_kst: kstISO(cutoffMs),
     horizon_end_at_kst: kstISO(targetMs),
     raw_target_price: (v.forecast && v.forecast.target != null) ? +v.forecast.target : raw[raw.length-1][1],
-    calibrated_target_price: cal.length ? cal[cal.length-1][1] : null,
+    calibrated_target_price: (calRec && calRec.target != null) ? +calRec.target : (cal.length ? cal[cal.length-1][1] : null),
     raw_path: raw,
     calibrated_path: cal,
     calibration_status: cal.length ? "APPLIED" : "NONE",
