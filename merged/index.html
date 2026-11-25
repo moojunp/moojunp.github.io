@@ -2124,7 +2124,7 @@ function ppPaint(){
       foot.innerHTML = parts.join("");
     } else if (!PP.key){
       foot.innerHTML = "<span class='hint'>🔑 <b style='color:#cfd6e0'>열람 키</b>를 넣으면 pp-relay 의 5분 구간 예측이 이 그래프에 같은 축으로 겹칩니다</span>" +
-        "<span class='hint'>키는 pp-relay 원본과 같은 <b style='color:#cfd6e0'>이 브라우저의 localStorage</b> 에만 남습니다</span>";
+        "<span class='hint'>키는 <b style='color:#cfd6e0'>이 페이지의 localStorage</b> 에만 남습니다 · pp-relay 원본과는 별도 저장소입니다</span>";
     } else {
       foot.innerHTML = "<span class='hint'>" + (PP.invalid ? "키를 다시 확인해 주세요" : "pp-relay 연결 중…") +
         " · <a href='https://pp-relay.vicious130510.workers.dev/' target='_blank' rel='noopener noreferrer' style='color:#8b94a3'>원본에서 열기 ↗</a></span>";
