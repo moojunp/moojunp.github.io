@@ -45,6 +45,12 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
 .lg .k.t{border-top-style:dotted}
 .cv{display:block;width:100%;touch-action:none;cursor:crosshair}
 #cvM{height:400px} #cvR{height:230px} #cvF{height:300px}
+#c-pp iframe{display:block;width:100%;height:980px;border:0;background:#f5f4ee}
+#c-pp.fs iframe{height:calc(100vh - 60px)}
+#c-pp .ppnote{padding:5px 10px;font-size:10.5px;color:#8b94a3;background:#171b21;border-bottom:1px solid var(--line)}
+#c-pp .ppnote b{color:#cfd6e0;font-weight:600}
+#c-pp .hd a.ppa{color:#8b94a3;text-decoration:none;font-size:10.5px;border-bottom:1px dotted #3a4250}
+#c-pp .hd a.ppa:hover{color:#dfe3ea}
 .foot{padding:4px 10px 8px;font-size:10.5px;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap}
 .foot b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
 .foot .up{color:var(--green)} .foot .dn{color:var(--red)}
@@ -123,7 +129,21 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
     <div class="panel" id="panelK"></div>
   </section>
 
-  <!-- 2. 상대 성과 — 두 시장을 같은 시간축에서 (09:00 KST = 100) -->
+  <!-- 2. KOSPI200 5분 구간 예측 — pp-relay 원본을 iframe 으로 그대로 얹는다 -->
+  <section class="card" id="c-pp">
+    <div class="hd">
+      <h2>KOSPI200 · 5분 구간 예측 <span style="color:#5d6675;font-weight:400">pp-relay 원본</span></h2>
+      <div class="chips" id="chPPH"></div>
+      <button id="ppReload" title="임베드를 다시 불러오기">⟳</button>
+      <span class="sp"></span>
+      <a class="ppa" href="https://pp-relay.vicious130510.workers.dev/" target="_blank" rel="noopener noreferrer">새 창 ↗</a>
+    </div>
+    <div class="ppnote">접근 키가 없으면 아래 원본의 <b>열람 키</b> 칸에 한 번 입력하세요 · 키는 pp-relay 가 이 브라우저에 기억합니다</div>
+    <iframe id="ppFrame" title="KOSPI200 5분 구간 예측 (pp-relay)" src="about:blank" loading="lazy" referrerpolicy="no-referrer"></iframe>
+    <div class="foot" id="footP"></div>
+  </section>
+
+  <!-- 3. 상대 성과 — 두 시장을 같은 시간축에서 (09:00 KST = 100) -->
   <section class="card" id="c-rel">
     <div class="hd">
       <h2>상대 성과 <span style="color:#5d6675;font-weight:400">09:00 KST 시점 = 100</span></h2>
@@ -170,7 +190,7 @@ main{display:grid;gap:8px;padding:8px;max-width:1400px;margin:0 auto;align-items
 "use strict";
 /* =========================================================================
    핵심 뷰 — 세 대시보드의 필요한 부분만 한 페이지에서 직접 그린다.
-   iframe 0개 · 외부 번들 0개 · 타이머는 보이는 동안에만.
+   iframe 은 pp-relay 5분 예측 카드 하나뿐 · 외부 번들 0개 · 타이머는 보이는 동안에만.
 
    이번 개정(상세 + 확대/축소)
    - 모든 차트가 개별 확대/축소: 휠·핀치 확대, 드래그 이동, 더블클릭·⤢ 리셋, ± 버튼
@@ -1867,7 +1887,8 @@ $("#refresh").onclick = function(){
 };
 window.addEventListener("keydown", function(e){
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === "r") $("#refresh").click();
+  var tag = (e.target && e.target.tagName) || "";
+  if (e.key === "r" && !/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) $("#refresh").click();
 });
 
 /* 창이 숨으면 전부 멈춘다 */
@@ -1893,7 +1914,45 @@ window.addEventListener("resize", function(){
   }, 120);
 });
 
+/* ===== pp-relay 5분 구간 예측 임베드 =====
+   pp-relay 는 접근 키(?k=)가 있어야 /ws 를 연다. 키는 원본 페이지가 그 origin 의
+   localStorage(pp-view-key)에 기억하므로 여기서는 원본을 iframe 으로 그대로 얹고,
+   키 입력·기억은 원본 페이지의 #access 폼에 맡긴다. */
+var PP_BASE = "https://pp-relay.vicious130510.workers.dev/";
+var PP_HEIGHTS = [700, 980, 1400];
+function ppSetH(h){
+  var f = $("#ppFrame"); if (!f) return;
+  if (h === "fs"){ $("#c-pp").classList.add("fs"); f.style.height = ""; }
+  else { $("#c-pp").classList.remove("fs"); f.style.height = h + "px"; }
+  Array.prototype.forEach.call($("#chPPH").children, function(b){
+    b.classList.toggle("on", b.getAttribute("data-h") === String(h));
+  });
+}
+function ppLoad(){
+  var f = $("#ppFrame"); if (!f) return;
+  f.src = PP_BASE + "?embed=1&t=" + Date.now();
+}
+function ppInit(){
+  var box = $("#chPPH");
+  PP_HEIGHTS.concat(["fs"]).forEach(function(h){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("data-h", h);
+    b.textContent = h === "fs" ? "가득" : h === 700 ? "작게" : h === 980 ? "보통" : "크게";
+    b.title = h === "fs" ? "화면 높이에 맞춤" : "임베드 높이 " + h + "px";
+    b.onclick = function(){ ppSetH(h); };
+    box.appendChild(b);
+  });
+  ppSetH(980);
+  $("#ppReload").onclick = ppLoad;
+  $("#footP").innerHTML = '원본 <a href="' + PP_BASE + '" target="_blank" rel="noopener noreferrer"'
+    + ' style="color:#8b94a3">pp-relay.vicious130510.workers.dev</a> · '
+    + '구간별 방향·적중 기록은 원본이 그립니다 · 접근 키는 원본 페이지가 이 브라우저에 기억합니다 · 원본이 밝은 테마라 이 카드만 흰 배경입니다';
+  ppLoad();
+}
+
 buildRelSel();
+ppInit();
 renderMerged(); renderRel(); renderFut();
 kickKospi(); loopQuote(); loopChart(); loopTick(); loopRel();
 </script>
