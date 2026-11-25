@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<title>KOSPI200 · 5분 구간 예측</title>
+<style>
+:root{
+  --bg:#0e1015; --hd:#191d24; --line:#23272f;
+  --fg:#dfe3ea; --dim:#8b94a3; --faint:#5d6675;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);
+  font:12px/1.35 -apple-system,"Segoe UI","Malgun Gothic",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+body{display:flex;flex-direction:column;height:100vh;height:100dvh;min-height:0;overflow:hidden}
+#bar{flex:0 0 auto;min-height:34px;display:flex;align-items:center;gap:12px;
+  padding:4px 10px;background:var(--hd);border-bottom:1px solid var(--line);flex-wrap:wrap}
+#bar b{font-size:11.5px;letter-spacing:.02em;white-space:nowrap}
+#bar .src{font-size:10.5px;color:var(--faint);white-space:nowrap}
+.sp{flex:1}
+a.lk{color:var(--dim);text-decoration:none;font-size:11px;white-space:nowrap;
+  border-bottom:1px dotted #3a4250;padding-bottom:1px}
+a.lk:hover{color:var(--fg)}
+button{font:inherit;color:var(--dim);background:#20242c;border:1px solid transparent;border-radius:5px;
+  padding:2px 7px;font-size:11px;cursor:pointer;white-space:nowrap}
+button:hover{background:#282d37;color:var(--fg)}
+.note{flex:0 0 auto;padding:5px 10px;font-size:10.5px;color:var(--dim);
+  background:#171b21;border-bottom:1px solid var(--line)}
+.note b{color:#cfd6e0;font-weight:600}
+.wrap{flex:1 1 auto;position:relative;min-height:0;background:#f5f4ee}
+iframe{position:absolute;inset:0;display:block;width:100%;height:100%;border:0;background:#f5f4ee}
+@media (max-width:560px){
+  #bar{gap:8px}
+  .hidesm{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <b>KOSPI200 · 5분 구간 예측</b>
+  <span class="src">pp-relay 원본</span>
+  <a class="lk" href="/merged/">← 통합 뷰</a>
+  <a class="lk hidesm" href="/">← 기존 뷰</a>
+  <span class="sp"></span>
+  <button id="reload" title="임베드를 다시 불러오기 (r)">⟳ 다시 불러오기</button>
+  <a class="lk" href="https://pp-relay.vicious130510.workers.dev/" target="_blank" rel="noopener noreferrer">새 창 ↗</a>
+</div>
+
+<div class="note">접근 키가 없으면 아래 원본의 <b>열람 키</b> 칸에 한 번 입력하세요 · 키는 pp-relay 가 이 브라우저에 기억합니다</div>
+
+<div class="wrap">
+  <iframe id="ppFrame" title="KOSPI200 5분 구간 예측 (pp-relay)" src="about:blank" referrerpolicy="no-referrer"></iframe>
+</div>
+
+<script>
+/* pp-relay 원본을 한 화면 가득 얹는 별도 페이지.
+   접근 키(?k=)는 원본 페이지가 그 origin 의 localStorage(pp-view-key)에 기억하므로
+   키 입력·기억은 원본의 #access 폼에 맡기고, 여기서는 프레임만 새로 채운다. */
+var PP_BASE = "https://pp-relay.vicious130510.workers.dev/";
+var f = document.getElementById("ppFrame");
+
+function ppLoad(){
+  f.src = PP_BASE + "?embed=1&t=" + Date.now();
+}
+
+document.getElementById("reload").onclick = ppLoad;
+
+document.addEventListener("keydown", function(e){
+  if (e.key !== "r" && e.key !== "R") return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  var t = e.target, tag = t && t.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
+  ppLoad();
+});
+
+ppLoad();
+</script>
+</body>
+</html>
